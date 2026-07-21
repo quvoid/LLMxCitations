@@ -56,7 +56,6 @@ class ChatGPTScraper(PlatformScraper):
         page = self.require_page()
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
-        self._enable_web_search()
         box = self._find_prompt_box(timeout=900_000)
         before_text = self._main_text()
 
@@ -184,61 +183,68 @@ class ChatGPTScraper(PlatformScraper):
         return False
 
     def _wait_for_response_to_start(self, before_text: str) -> None:
+        """Wait until ChatGPT navigation confirms the prompt was accepted."""
         page = self.require_page()
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
+            # Most reliable signal: URL changes from '/' to '/c/{id}' on submission
+            if "/c/" in page.url:
+                return
+            # Fallback: stop button appeared or text grew
             if self._any_stop_button_visible():
                 return
-            try:
-                send_btn = page.locator("button[data-testid='send-button']").first
-                if send_btn.count() and not send_btn.is_enabled(timeout=300):
-                    return
-            except PlaywrightError:
-                pass
             current_text = self._main_text()
             if current_text and current_text != before_text and len(current_text) > len(before_text):
                 return
-            time.sleep(0.4)
+            time.sleep(0.3)
         raise TimeoutError("Timed out waiting for ChatGPT response to start.")
 
     def _wait_for_generation_to_finish(self) -> None:
         page = self.require_page()
 
-        # Wait up to 45s for generation to START (stop button appears)
+        # Short window (5s) for the stop button to appear as confirmation
         try:
             page.wait_for_selector(
                 "button[data-testid='stop-button']",
-                state="visible", timeout=45_000
+                state="visible", timeout=5_000
             )
         except (PlaywrightError, PlaywrightTimeoutError):
-            pass  # too fast or different selector — continue anyway
+            pass
 
-        # Wait for generation to END
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + 180
         stable_rounds = 0
         previous_text = ""
 
         while time.monotonic() < deadline:
-            if self._any_stop_button_visible():
-                stable_rounds = 0
-                time.sleep(0.75)
-                continue
-
-            # Primary signal: good-response button appears only when response is complete
+            # Still generating if stop button is visible
             try:
-                done_btn = page.locator("[data-testid='good-response-turn-action-button']").last
-                if done_btn.count() and done_btn.is_visible(timeout=300):
+                stop = page.locator("button[data-testid='stop-button']").first
+                if stop.count() and stop.is_visible(timeout=300):
+                    stable_rounds = 0
+                    time.sleep(0.5)
+                    continue
+            except PlaywrightError:
+                pass
+
+            # Primary completion signals — appear only after generation finishes
+            try:
+                done = page.locator(
+                    "[data-testid='good-response-turn-action-button'], "
+                    "[data-testid='bad-response-turn-action-button'], "
+                    "[data-testid='copy-turn-action-button']"
+                ).last
+                if done.count() and done.is_visible(timeout=300):
                     time.sleep(0.5)
                     return
             except PlaywrightError:
                 pass
 
-            # Fallback: last assistant message text stability
+            # Fallback: last assistant message text stability (3 × 0.8s = 2.4s stable)
             try:
                 last_msg = page.locator("[data-message-author-role='assistant']").last
-                current_text = last_msg.inner_text(timeout=2_000).strip() if last_msg.count() else self._main_text()
+                current_text = last_msg.inner_text(timeout=2_000).strip() if last_msg.count() else ""
             except PlaywrightError:
-                current_text = self._main_text()
+                current_text = ""
 
             if current_text and current_text == previous_text:
                 stable_rounds += 1
@@ -252,69 +258,6 @@ class ChatGPTScraper(PlatformScraper):
 
         raise TimeoutError("Timed out waiting for ChatGPT response to finish.")
 
-    def _is_web_search_active(self) -> bool:
-        """Check if web search is already active in the compose box."""
-        page = self.require_page()
-        try:
-            return page.evaluate("""
-                () => {
-                    const form = document.querySelector('form') || document.querySelector('[class*="composer"]');
-                    if (!form) return false;
-                    const elements = form.querySelectorAll('button, [role="button"], [class*="pill"], [class*="tag"], [class*="badge"]');
-                    for (const el of elements) {
-                        const label = (el.getAttribute('aria-label') || '').toLowerCase();
-                        const text = (el.innerText || '').toLowerCase();
-                        if (label.includes('add files') || label.includes('send') || label.includes('attach')) {
-                            continue;
-                        }
-                        if (label.includes('search') || text.includes('search') || label.includes('web') || text.includes('web') || label.includes('look up') || text.includes('look up')) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            """)
-        except PlaywrightError:
-            return False
-
-    def _enable_web_search(self) -> None:
-        """Enable web search by clicking + menu -> 'Look something up' with active verification and retry."""
-        if self._is_web_search_active():
-            print("[chatgpt] Web search is already active.")
-            return
-
-        page = self.require_page()
-        for attempt in range(2):
-            try:
-                # Open the + (composer-plus) menu
-                plus = page.locator("button[data-testid='composer-plus-btn']").first
-                if not (plus.count() and plus.is_visible(timeout=2_000)):
-                    continue
-                plus.evaluate("el => el.click()")
-                time.sleep(1.0)
-
-                # Find 'Look something up' inside the menu
-                search_opt = page.locator(
-                    "button:has-text('Look something up'), "
-                    "[role='menuitem']:has-text('Look something up'), "
-                    "[role='option']:has-text('Look something up')"
-                ).first
-                if search_opt.count() and search_opt.is_visible(timeout=1_500):
-                    search_opt.evaluate("el => el.click()")
-                    time.sleep(1.5)
-                    
-                    if self._is_web_search_active():
-                        print("[chatgpt] Web search successfully enabled.")
-                        return
-                else:
-                    # Menu didn't have the option — close it
-                    page.keyboard.press("Escape")
-                    time.sleep(0.5)
-            except PlaywrightError:
-                pass
-            time.sleep(1.0)
-            
-        print("[chatgpt] WARNING: Failed to enable web search after retries. Response might not contain web citations.")
 
     def _dismiss_modal(self) -> None:
         """Close any blocking overlay or modal dialog using JS DOM removal."""
@@ -331,14 +274,16 @@ class ChatGPTScraper(PlatformScraper):
         close_selectors = [
             "button[aria-label='Close']",
             "button[aria-label='Dismiss']",
+            "button[aria-label='close']",
+            "[data-testid='modal-close']",
             "button:has-text('Maybe later')",
             "button:has-text('No thanks')",
+            "button:has-text('Not now')",
             "button:has-text('Skip')",
             "button:has-text('Got it')",
             "button:has-text('Dismiss')",
             "button:has-text('Stay logged out')",
-            "[data-testid='modal-close']",
-            "[role='dialog'] button",
+            "button:has-text('Later')",
         ]
         for selector in close_selectors:
             try:
@@ -350,17 +295,35 @@ class ChatGPTScraper(PlatformScraper):
             except PlaywrightError:
                 continue
 
-        # 3. Forcibly remove any full-screen fixed overlay elements from the DOM
+        # 3. JS: search dialogs for close buttons, explicitly skip voice/start/try buttons
+        try:
+            page.evaluate("""
+                () => {
+                    const SKIP = ['voice', 'start', 'try', 'enable', 'microphone', 'record'];
+                    const CLOSE = ['close', 'dismiss', 'skip', 'later', 'no thanks', 'not now', 'got it'];
+                    const dialogs = document.querySelectorAll('[role="dialog"], [data-state="open"]');
+                    for (const dlg of dialogs) {
+                        for (const btn of dlg.querySelectorAll('button')) {
+                            const lbl = (btn.getAttribute('aria-label') || btn.innerText || '').toLowerCase().trim();
+                            if (SKIP.some(w => lbl.includes(w))) continue;
+                            if (CLOSE.some(w => lbl.includes(w)) || lbl === 'x') {
+                                btn.click(); return;
+                            }
+                        }
+                    }
+                }
+            """)
+        except PlaywrightError:
+            pass
+
+        # 4. Force-remove blocking full-screen overlay divs
         try:
             page.evaluate("""
                 () => {
                     document.querySelectorAll('div.fixed.inset-0, div[data-state="open"][aria-hidden="true"]').forEach(el => {
-                        const style = window.getComputedStyle(el);
-                        if (
-                            el.getAttribute('aria-hidden') === 'true' ||
-                            el.getAttribute('data-aria-hidden') === 'true' ||
-                            (style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)')
-                        ) {
+                        const s = window.getComputedStyle(el);
+                        if (el.getAttribute('aria-hidden') === 'true' ||
+                            (s.backgroundColor && s.backgroundColor !== 'rgba(0, 0, 0, 0)')) {
                             el.remove();
                         }
                     });
