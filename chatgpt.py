@@ -56,6 +56,7 @@ class ChatGPTScraper(PlatformScraper):
         page = self.require_page()
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
+        self._handle_rate_limit()  # check for rate limit right on page load
         box = self._find_prompt_box(timeout=900_000)
         before_text = self._main_text()
 
@@ -254,9 +255,42 @@ class ChatGPTScraper(PlatformScraper):
 
             if stable_rounds >= 3:
                 return
+
+            # Check for rate limit modal mid-generation
+            if self._handle_rate_limit():
+                raise TimeoutError("Rate limited by ChatGPT — will retry this prompt.")
+
             time.sleep(0.8)
 
         raise TimeoutError("Timed out waiting for ChatGPT response to finish.")
+
+    def _handle_rate_limit(self, wait_seconds: int = 180) -> bool:
+        """Detect 'Too many requests' modal, dismiss it, and wait before retrying.
+        Returns True if a rate limit was detected."""
+        page = self.require_page()
+        try:
+            body_text = page.locator("body").inner_text(timeout=2_000)
+        except PlaywrightError:
+            return False
+
+        if not re.search(r"too many requests", body_text, re.I):
+            return False
+
+        print(f"[chatgpt] Rate limited! Clicking 'Got it' and waiting {wait_seconds}s before retrying...")
+
+        # Click 'Got it' to dismiss
+        for selector in ["button:has-text('Got it')", "button:has-text('OK')", "[role='dialog'] button"]:
+            try:
+                btn = page.locator(selector).first
+                if btn.count() and btn.is_visible(timeout=500):
+                    btn.evaluate("el => el.click()")
+                    time.sleep(0.5)
+                    break
+            except PlaywrightError:
+                continue
+
+        time.sleep(wait_seconds)
+        return True
 
 
     def _dismiss_modal(self) -> None:
