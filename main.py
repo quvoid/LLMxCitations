@@ -26,7 +26,17 @@ PLATFORMS = {
     "grok": GrokScraper,
 }
 
-OUTPUT_FIELDS = ["prompt", "platform", "url", "citation_category", "response_date", "meningococcal_mentions"]
+OUTPUT_FIELDS = [
+    "prompt",
+    "platform",
+    "url",
+    "citation_category",
+    "response_date",
+    "meningococcal_mentions",
+    "bkt_mentions",
+    "bkt_tyres_mentions",
+    "balkrishna_industries_limited_mentions",
+]
 
 
 # ── URL category rules (checked top-to-bottom, first match wins) ─────────────
@@ -241,6 +251,9 @@ def run_scrape(args) -> int:
                         urls = scraper.get_citation_urls()
                         response_text = scraper.get_response_text()
                         mening_count = len(re.findall(r"meningococcal", response_text, re.I))
+                        bkt_count = len(re.findall(r"\bbkt\b", response_text, re.I))
+                        bkt_tyres_count = len(re.findall(r"\bbkt[- ]?tyres\b", response_text, re.I))
+                        balkrishna_count = len(re.findall(r"\bbalkrishna\s+industries\s+(?:limited|ltd\.?)\b", response_text, re.I))
                         today = date.today().isoformat()
 
                         if urls:
@@ -252,6 +265,9 @@ def run_scrape(args) -> int:
                                     "citation_category": categorize_url(url),
                                     "response_date": today,
                                     "meningococcal_mentions": mening_count if i == 0 else "",
+                                    "bkt_mentions": bkt_count if i == 0 else "",
+                                    "bkt_tyres_mentions": bkt_tyres_count if i == 0 else "",
+                                    "balkrishna_industries_limited_mentions": balkrishna_count if i == 0 else "",
                                 }
                                 for i, url in enumerate(urls)
                             ]
@@ -264,11 +280,14 @@ def run_scrape(args) -> int:
                                     "citation_category": "",
                                     "response_date": today,
                                     "meningococcal_mentions": mening_count,
+                                    "bkt_mentions": bkt_count,
+                                    "bkt_tyres_mentions": bkt_tyres_count,
+                                    "balkrishna_industries_limited_mentions": balkrishna_count,
                                 }
                             ]
                         append_rows(args.output, rows)
                         scraper.save_storage_state()
-                        print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}")
+                        print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}, bkt_mentions={bkt_count}, bkt_tyres_mentions={bkt_tyres_count}, balkrishna_industries_limited_mentions={balkrishna_count}")
                     except Exception as exc:
                         logging.exception("platform=%s prompt=%r error=%s", platform_name, prompt, exc)
                         print(f"[{platform_name}] failed prompt: {exc}", file=sys.stderr)
