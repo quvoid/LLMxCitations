@@ -16,9 +16,13 @@ class GeminiScraper(PlatformScraper):
 
     INTERNAL_HOSTS = {
         "gemini.google.com",
+        "gemini.google",
+        "business.gemini.google",
         "accounts.google.com",
         "myaccount.google.com",
         "support.google.com",
+        "google.com",
+        "www.google.com",
     }
 
     PROMPT_SELECTORS = [
@@ -281,10 +285,14 @@ class GeminiScraper(PlatformScraper):
             return ""
 
         host = parsed.netloc.lower()
-        if host in self.INTERNAL_HOSTS or host.endswith(".googleusercontent.com"):
+        # Block all Google-owned hosts: *.google.com, *.google.co.in, *.google (TLD), etc.
+        if host in self.INTERNAL_HOSTS:
             return ""
-
-        if host.endswith(".google.com") or host.endswith(".google.co.in"):
+        if host.endswith(".googleusercontent.com"):
+            return ""
+        if host.endswith(".google") or host == "google":
+            return ""  # catches gemini.google, business.gemini.google, etc.
+        if host.endswith(".google.com") or host.endswith(".google.co.in") or host.endswith(".google.co"):
             query = parse_qs(parsed.query)
             for key in ("url", "q", "u", "target"):
                 if key in query and query[key]:
