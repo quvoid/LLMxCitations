@@ -104,3 +104,156 @@ python .\main.py --min-delay 4 --max-delay 10
 ```
 
 No stealth plugins, fingerprint spoofing, CAPTCHA solving, or anti-detection evasion are used.
+
+---
+
+## Setting Up on a New PC (Full Process)
+
+### 1. Prerequisites
+
+Install the following before cloning:
+
+- **Python 3.10+** → https://www.python.org/downloads/ *(check "Add to PATH" during install)*
+- **Git** → https://git-scm.com/downloads
+- **Google Chrome** *(must be installed — the scraper uses your real Chrome to avoid bot detection)*
+
+---
+
+### 2. Clone the Repository
+
+```powershell
+git clone https://github.com/quvoid/LLMxCitations.git
+cd LLMxCitations
+```
+
+---
+
+### 3. Install Python Dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+---
+
+### 4. Install Playwright Browser
+
+```powershell
+python -m playwright install chromium
+```
+
+> Note: Even though we use Google Chrome at runtime, Playwright needs Chromium installed for its driver.
+
+---
+
+### 5. Prepare Your Prompts File
+
+Create a `prompts.csv` file in the project folder:
+
+```csv
+prompt
+BKT tyres price list India
+Balkrishna Industries tyre review
+Best off road tyres for tractors
+```
+
+---
+
+### 6. Authenticate Each Platform (One-Time Setup)
+
+Each platform needs a saved login session. Run these one at a time:
+
+**ChatGPT:**
+```powershell
+python main.py --save-auth chatgpt
+```
+Log in to ChatGPT in the Chrome window that opens. Once logged in and the chat box is visible, press **Enter** in the terminal.
+
+**Gemini:**
+```powershell
+python main.py --save-auth gemini
+```
+Log in with your Google account. Once the Gemini chat page is ready, press **Enter**.
+
+**Perplexity:**
+```powershell
+python main.py --save-auth perplexity
+```
+Log in to Perplexity. Once the Ask box is visible, press **Enter**.
+
+Auth sessions are saved to:
+```text
+.\auth_state\chatgpt.json
+.\auth_state\gemini.json
+.\auth_state\perplexity.json
+```
+And persistent browser profiles to:
+```text
+.\browser_profiles\chatgpt\
+.\browser_profiles\gemini\
+.\browser_profiles\perplexity\
+```
+
+---
+
+### 7. Run the Scraper
+
+Run all platforms:
+```powershell
+python main.py --platforms chatgpt,gemini,perplexity
+```
+
+Run a single platform:
+```powershell
+python main.py --platforms chatgpt
+```
+
+Results are saved to `output.csv`. Errors are logged to `errors.log`.
+
+---
+
+### 8. Rate Limits (Built-In)
+
+The scraper automatically enforces minimum delays between prompts per platform:
+
+| Platform | Minimum Delay |
+|---|---|
+| ChatGPT | 20 seconds |
+| Perplexity | 12 seconds |
+| Gemini | 3 seconds (default) |
+
+You can increase delays:
+```powershell
+python main.py --platforms chatgpt --min-delay 30 --max-delay 45
+```
+
+---
+
+### 9. Delete a Profile (Re-Auth)
+
+If a session expires or login fails, delete the profile and re-auth:
+
+```powershell
+# Replace 'chatgpt' with gemini / perplexity as needed
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item -Recurse -Force "browser_profiles\chatgpt"
+Remove-Item -Force "auth_state\chatgpt.json"
+python main.py --save-auth chatgpt
+```
+
+---
+
+### Output CSV Columns
+
+| Column | Description |
+|---|---|
+| `prompt` | The question asked |
+| `platform` | chatgpt / gemini / perplexity |
+| `url` | Citation URL found in the response |
+| `citation_category` | Category of the URL (News, Blog, etc.) |
+| `response_date` | Date the prompt was run |
+| `response_content` | Full text of the LLM response |
+| `bkt_mentions` | Count of "BKT" mentions in response |
+| `bkt_tyres_mentions` | Count of "BKT Tyres" mentions |
+| `balkrishna_industries_limited_mentions` | Count of full brand name mentions |
+

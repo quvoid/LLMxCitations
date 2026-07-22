@@ -14,6 +14,9 @@ class ChatGPTScraper(PlatformScraper):
     platform_name = "chatgpt"
     start_url = "https://chatgpt.com/"
 
+    # Minimum seconds between prompts for this platform (overrides --min-delay if higher)
+    RATE_LIMIT_DELAY: float = 20.0
+
     INTERNAL_HOSTS = {
         "chatgpt.com",
         "www.chatgpt.com",

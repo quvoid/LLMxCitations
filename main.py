@@ -296,7 +296,11 @@ def run_scrape(args) -> int:
                         print(f"[{platform_name}] failed prompt: {exc}", file=sys.stderr)
 
                     if index < len(prompts):
-                        delay = random.uniform(args.min_delay, args.max_delay)
+                        platform_min = getattr(scraper, "RATE_LIMIT_DELAY", 0.0)
+                        lo = max(args.min_delay, platform_min)
+                        hi = max(args.max_delay, lo)
+                        delay = random.uniform(lo, hi)
+                        print(f"[{platform_name}] waiting {delay:.1f}s before next prompt...")
                         time.sleep(delay)
 
     return 0

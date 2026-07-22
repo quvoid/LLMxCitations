@@ -14,6 +14,9 @@ class PerplexityScraper(PlatformScraper):
     platform_name = "perplexity"
     start_url = "https://www.perplexity.ai/"
 
+    # Minimum seconds between prompts for this platform (overrides --min-delay if higher)
+    RATE_LIMIT_DELAY: float = 12.0
+
     INTERNAL_HOSTS = {
         "perplexity.ai",
         "www.perplexity.ai",
@@ -44,6 +47,8 @@ class PerplexityScraper(PlatformScraper):
 
     def submit_prompt(self, prompt: str) -> None:
         page = self.require_page()
+        # Always start from homepage so each prompt is a fresh conversation
+        page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
         box = self._find_prompt_box(timeout=45_000)
         before_url_count = self._external_url_count()
