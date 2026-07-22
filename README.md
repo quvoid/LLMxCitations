@@ -104,3 +104,26 @@ python .\main.py --min-delay 4 --max-delay 10
 ```
 
 No stealth plugins, fingerprint spoofing, CAPTCHA solving, or anti-detection evasion are used.
+
+
+## Delete Chrome Profile 
+
+All the profile : 
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\*.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+
+Perplexity : 
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\perplexity" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\perplexity.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+
+gemini : 
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\gemini" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\gemini.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+
+Chatgpt : 
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\chatgpt" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\chatgpt.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+
+python main.py --save-auth chatgpt
+
+python main.py --platforms gemini
+
+python main.py --platforms chatgpt 
+
+
