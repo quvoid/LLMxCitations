@@ -45,6 +45,18 @@ class GeminiScraper(PlatformScraper):
         "button:has(mat-icon:has-text('stop'))",
     ]
 
+    # Appended to every prompt so Gemini includes source URLs inline
+    PROMPT_SUFFIX = (
+        "\n\nImportant: For every fact or recommendation, please include the "
+        "full source URL (e.g. https://example.com/page) so I can verify the information."
+    )
+
+    # Regex to extract URLs written inline in the response text
+    _URL_RE = re.compile(
+        r'https?://(?:[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%])+',
+        re.I
+    )
+
     def login_if_needed(self) -> None:
         page = self.require_page()
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
@@ -64,13 +76,16 @@ class GeminiScraper(PlatformScraper):
         except PlaywrightError:
             pass
 
+        # Append suffix to ask Gemini to include source URLs inline
+        augmented = prompt + self.PROMPT_SUFFIX
+
         # Try fill first, fall back to keyboard typing
         try:
-            box.fill(prompt, timeout=10_000)
+            box.fill(augmented, timeout=10_000)
         except PlaywrightError:
             try:
                 page.keyboard.press("Control+a")
-                page.keyboard.type(prompt, delay=10)
+                page.keyboard.type(augmented, delay=10)
             except PlaywrightError:
                 pass
 
@@ -81,12 +96,51 @@ class GeminiScraper(PlatformScraper):
         self._wait_for_generation_to_finish()
 
     def get_citation_urls(self) -> list[str]:
+        """Extract citation URLs from Gemini response.
+        
+        Gemini free tier does not expose sources in DOM (sources-list is always empty).
+        Primary strategy: extract URLs written inline in the response text.
+        Secondary strategy: scrape any <a href> links from the page DOM.
+        """
         page = self.require_page()
-        hrefs = page.locator("main a[href], bard-sidenav-content a[href], a[href][target='_blank']").evaluate_all(
-            "(links) => links.map((link) => link.href)"
-        )
-        urls = [url for href in hrefs if (url := self._clean_external_url(href))]
-        return dedupe_preserve_order(urls)
+        found: list[str] = []
+
+        # 1. Extract URLs from response text (primary — works on free tier)
+        try:
+            for selector in [
+                "model-response:last-of-type",
+                "model-response",
+                "bard-sidenav-content",
+                "main",
+            ]:
+                locator = page.locator(selector).last
+                if locator.count():
+                    text = locator.inner_text(timeout=3_000).strip()
+                    if text:
+                        for raw_url in self._URL_RE.findall(text):
+                            # Strip trailing punctuation
+                            raw_url = raw_url.rstrip('.,;:)\'"')
+                            cleaned = self._clean_external_url(raw_url)
+                            if cleaned:
+                                found.append(cleaned)
+                        break
+        except PlaywrightError:
+            pass
+
+        # 2. Fallback: DOM <a href> scrape (works if Gemini ever shows sources in DOM)
+        try:
+            hrefs = page.locator(
+                "sources-list a[href], source-chip a[href], "
+                "main a[href], bard-sidenav-content a[href]"
+            ).evaluate_all("(links) => links.map(l => l.href)")
+            for href in hrefs:
+                cleaned = self._clean_external_url(href)
+                if cleaned:
+                    found.append(cleaned)
+        except PlaywrightError:
+            pass
+
+        return dedupe_preserve_order(found)
 
     def get_response_text(self) -> str:
         """Return the full AI-generated answer text from the last Gemini response."""
