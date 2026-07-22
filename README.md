@@ -233,12 +233,24 @@ python main.py --platforms chatgpt --min-delay 30 --max-delay 45
 
 If a session expires or login fails, delete the profile and re-auth:
 
+**All profiles:**
 ```powershell
-# Replace 'chatgpt' with gemini / perplexity as needed
-Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force
-Remove-Item -Recurse -Force "browser_profiles\chatgpt"
-Remove-Item -Force "auth_state\chatgpt.json"
-python main.py --save-auth chatgpt
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\*.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+```
+
+**Perplexity profile:**
+```powershell
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\perplexity" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\perplexity.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+```
+
+**Gemini profile:**
+```powershell
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\gemini" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\gemini.json" -ErrorAction SilentlyContinue; Write-Host "Done"
+```
+
+**ChatGPT profile:**
+```powershell
+Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Recurse -Force "browser_profiles\chatgpt" -ErrorAction SilentlyContinue; Remove-Item -Force "auth_state\chatgpt.json" -ErrorAction SilentlyContinue; Write-Host "Done"
 ```
 
 ---
@@ -256,4 +268,5 @@ python main.py --save-auth chatgpt
 | `bkt_mentions` | Count of "BKT" mentions in response |
 | `bkt_tyres_mentions` | Count of "BKT Tyres" mentions |
 | `balkrishna_industries_limited_mentions` | Count of full brand name mentions |
+
 
