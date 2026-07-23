@@ -117,6 +117,16 @@ class ChatGPTScraper(PlatformScraper):
             """)
         except PlaywrightError:
             all_hrefs = []
+
+        # Also extract any URLs written inline in the assistant response text
+        try:
+            text = self.get_response_text()
+            if text:
+                for raw_url in re.findall(r'https?://(?:[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]+)', text):
+                    all_hrefs.append(raw_url.rstrip('.,;:)\'"'))
+        except Exception:
+            pass
+
         urls = [url for href in all_hrefs if (url := self._clean_external_url(href))]
         return dedupe_preserve_order(urls)
 
