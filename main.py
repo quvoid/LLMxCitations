@@ -247,53 +247,60 @@ def run_scrape(args) -> int:
 
                 for index, prompt in enumerate(prompts, start=1):
                     print(f"[{platform_name}] {index}/{len(prompts)}")
-                    try:
-                        scraper.submit_prompt(prompt)
-                        urls = scraper.get_citation_urls()
-                        response_text = scraper.get_response_text()
-                        mening_count = len(re.findall(r"meningococcal", response_text, re.I))
-                        bkt_count = len(re.findall(r"\bbkt\b", response_text, re.I))
-                        bkt_tyres_count = len(re.findall(r"\bbkt[- ]?tyres\b", response_text, re.I))
-                        balkrishna_count = len(re.findall(r"\bbalkrishna\s+industries\s+(?:limited|ltd\.?)\b", response_text, re.I))
-                        today = date.today().isoformat()
+                    max_attempts = 2
+                    for attempt in range(1, max_attempts + 1):
+                        try:
+                            scraper.submit_prompt(prompt)
+                            urls = scraper.get_citation_urls()
+                            response_text = scraper.get_response_text()
+                            mening_count = len(re.findall(r"meningococcal", response_text, re.I))
+                            bkt_count = len(re.findall(r"\bbkt\b", response_text, re.I))
+                            bkt_tyres_count = len(re.findall(r"\bbkt[- ]?tyres\b", response_text, re.I))
+                            balkrishna_count = len(re.findall(r"\bbalkrishna\s+industries\s+(?:limited|ltd\.?)\b", response_text, re.I))
+                            today = date.today().isoformat()
 
-                        if urls:
-                            rows = [
-                                {
-                                    "prompt": prompt,
-                                    "platform": platform_name,
-                                    "url": url,
-                                    "citation_category": categorize_url(url),
-                                    "response_date": today,
-                                    "response_content": response_text if i == 0 else "",
-                                    "meningococcal_mentions": mening_count if i == 0 else "",
-                                    "bkt_mentions": bkt_count if i == 0 else "",
-                                    "bkt_tyres_mentions": bkt_tyres_count if i == 0 else "",
-                                    "balkrishna_industries_limited_mentions": balkrishna_count if i == 0 else "",
-                                }
-                                for i, url in enumerate(urls)
-                            ]
-                        else:
-                            rows = [
-                                {
-                                    "prompt": prompt,
-                                    "platform": platform_name,
-                                    "url": "",
-                                    "citation_category": "",
-                                    "response_date": today,
-                                    "response_content": response_text,
-                                    "meningococcal_mentions": mening_count,
-                                    "bkt_mentions": bkt_count,
-                                    "bkt_tyres_mentions": bkt_tyres_count,
-                                    "balkrishna_industries_limited_mentions": balkrishna_count,
-                                }
-                            ]
-                        append_rows(args.output, rows)
-                        scraper.save_storage_state()
-                        print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}, bkt_mentions={bkt_count}, bkt_tyres_mentions={bkt_tyres_count}, balkrishna_industries_limited_mentions={balkrishna_count}")
-                    except Exception as exc:
-                        logging.exception("platform=%s prompt=%r error=%s", platform_name, prompt, exc)
-                        print(f"[{platform_name}] failed prompt: {exc}", file=sys.stderr)
+                            if urls:
+                                rows = [
+                                    {
+                                        "prompt": prompt,
+                                        "platform": platform_name,
+                                        "url": url,
+                                        "citation_category": categorize_url(url),
+                                        "response_date": today,
+                                        "response_content": response_text if i == 0 else "",
+                                        "meningococcal_mentions": mening_count if i == 0 else "",
+                                        "bkt_mentions": bkt_count if i == 0 else "",
+                                        "bkt_tyres_mentions": bkt_tyres_count if i == 0 else "",
+                                        "balkrishna_industries_limited_mentions": balkrishna_count if i == 0 else "",
+                                    }
+                                    for i, url in enumerate(urls)
+                                ]
+                            else:
+                                rows = [
+                                    {
+                                        "prompt": prompt,
+                                        "platform": platform_name,
+                                        "url": "",
+                                        "citation_category": "",
+                                        "response_date": today,
+                                        "response_content": response_text,
+                                        "meningococcal_mentions": mening_count,
+                                        "bkt_mentions": bkt_count,
+                                        "bkt_tyres_mentions": bkt_tyres_count,
+                                        "balkrishna_industries_limited_mentions": balkrishna_count,
+                                    }
+                                ]
+                            append_rows(args.output, rows)
+                            scraper.save_storage_state()
+                            print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}, bkt_mentions={bkt_count}, bkt_tyres_mentions={bkt_tyres_count}, balkrishna_industries_limited_mentions={balkrishna_count}")
+                            break
+                        except Exception as exc:
+                            if "Rate limited" in str(exc) and attempt < max_attempts:
+                                print(f"[{platform_name}] Rate limited on attempt {attempt}. Retrying prompt after 3-minute wait...", file=sys.stderr)
+                                continue
+                            logging.exception("platform=%s prompt=%r error=%s", platform_name, prompt, exc)
+                            print(f"[{platform_name}] failed prompt: {exc}", file=sys.stderr)
+                            break
 
                     if index < len(prompts):
                         platform_min = getattr(scraper, "RATE_LIMIT_DELAY", 0.0)

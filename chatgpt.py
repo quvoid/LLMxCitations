@@ -191,6 +191,8 @@ class ChatGPTScraper(PlatformScraper):
         page = self.require_page()
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by ChatGPT — waited 3 minutes before retry.")
             # Most reliable signal: URL changes from '/' to '/c/{id}' on submission
             if "/c/" in page.url:
                 return
@@ -260,40 +262,14 @@ class ChatGPTScraper(PlatformScraper):
                 return
 
             # Check for rate limit modal mid-generation
-            if self._handle_rate_limit():
-                raise TimeoutError("Rate limited by ChatGPT — will retry this prompt.")
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by ChatGPT — waited 3 minutes before retry.")
 
             time.sleep(0.8)
 
         raise TimeoutError("Timed out waiting for ChatGPT response to finish.")
 
-    def _handle_rate_limit(self, wait_seconds: int = 180) -> bool:
-        """Detect 'Too many requests' modal, dismiss it, and wait before retrying.
-        Returns True if a rate limit was detected."""
-        page = self.require_page()
-        try:
-            body_text = page.locator("body").inner_text(timeout=2_000)
-        except PlaywrightError:
-            return False
-
-        if not re.search(r"too many requests", body_text, re.I):
-            return False
-
-        print(f"[chatgpt] Rate limited! Clicking 'Got it' and waiting {wait_seconds}s before retrying...")
-
-        # Click 'Got it' to dismiss
-        for selector in ["button:has-text('Got it')", "button:has-text('OK')", "[role='dialog'] button"]:
-            try:
-                btn = page.locator(selector).first
-                if btn.count() and btn.is_visible(timeout=500):
-                    btn.evaluate("el => el.click()")
-                    time.sleep(0.5)
-                    break
-            except PlaywrightError:
-                continue
-
-        time.sleep(wait_seconds)
-        return True
+    _handle_rate_limit = PlatformScraper.handle_rate_limit
 
 
     def _dismiss_modal(self) -> None:

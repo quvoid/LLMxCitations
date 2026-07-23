@@ -1,5 +1,5 @@
-from __future__ import annotations
-
+import re
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Sequence
@@ -25,6 +25,47 @@ class PlatformScraper(ABC):
         self.storage_state_path = self.auth_dir / f"{self.platform_name}.json"
         self.context: BrowserContext | None = context
         self.page: Page | None = None
+
+    def handle_rate_limit(self, wait_seconds: int = 180) -> bool:
+        """Detect 'Too many requests' or rate limit messages, dismiss modal, and wait 3 minutes.
+        Returns True if a rate limit was detected and waited for."""
+        if self.page is None:
+            return False
+        try:
+            body_text = self.page.locator("body").inner_text(timeout=2_000)
+        except Exception:
+            return False
+
+        if not re.search(
+            r"(too many requests|you've reached your limit|rate limit|please try again in|slow down|quota exceeded)",
+            body_text,
+            re.I,
+        ):
+            return False
+
+        print(
+            f"[{self.platform_name}] Rate limit detected ('Too many requests'). Dismissing modal and waiting 3 minutes ({wait_seconds}s)..."
+        )
+
+        for selector in [
+            "button:has-text('Got it')",
+            "button:has-text('OK')",
+            "button:has-text('Dismiss')",
+            "button:has-text('Close')",
+            "button:has-text('I understand')",
+            "[role='dialog'] button",
+        ]:
+            try:
+                btn = self.page.locator(selector).first
+                if btn.count() and btn.is_visible(timeout=500):
+                    btn.evaluate("el => el.click()")
+                    time.sleep(0.5)
+                    break
+            except Exception:
+                continue
+
+        time.sleep(wait_seconds)
+        return True
 
     def __enter__(self) -> "PlatformScraper":
         if self.context is None:

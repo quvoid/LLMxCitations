@@ -67,6 +67,7 @@ class GeminiScraper(PlatformScraper):
         page = self.require_page()
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
+        self.handle_rate_limit()
         box = self._find_prompt_box(timeout=900_000)
         before_text = self._main_text()
 
@@ -212,6 +213,8 @@ class GeminiScraper(PlatformScraper):
     def _wait_for_response_to_start(self, before_text: str) -> None:
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by Gemini — waited 3 minutes before retry.")
             if self._any_stop_button_visible():
                 return
             current_text = self._main_text()
@@ -245,6 +248,10 @@ class GeminiScraper(PlatformScraper):
 
             if stable_rounds >= 4:
                 return
+
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by Gemini — waited 3 minutes before retry.")
+
             time.sleep(1.0)
 
         raise TimeoutError("Timed out waiting for Gemini response to finish.")

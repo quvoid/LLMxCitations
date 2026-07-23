@@ -50,6 +50,7 @@ class PerplexityScraper(PlatformScraper):
         # Always start from homepage so each prompt is a fresh conversation
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
+        self.handle_rate_limit()
         box = self._find_prompt_box(timeout=45_000)
         before_url_count = self._external_url_count()
 
@@ -142,7 +143,7 @@ class PerplexityScraper(PlatformScraper):
 
         raise RuntimeError(
             "Could not find Perplexity prompt textbox. If a Cloudflare/human verification "
-            "challenge is visible, rerun headful and complete it manually."
+            "task is visible, rerun headful and complete it manually."
         )
 
     def _security_challenge_visible(self) -> bool:
@@ -181,6 +182,8 @@ class PerplexityScraper(PlatformScraper):
         page = self.require_page()
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by Perplexity — waited 3 minutes before retry.")
             if self._any_stop_button_visible():
                 return
             if self._external_url_count() > before_url_count:
@@ -217,6 +220,10 @@ class PerplexityScraper(PlatformScraper):
 
             if stable_rounds >= 3:
                 return
+
+            if self.handle_rate_limit():
+                raise TimeoutError("Rate limited by Perplexity — waited 3 minutes before retry.")
+
             time.sleep(1.0)
 
         raise TimeoutError("Timed out waiting for Perplexity response to finish.")
