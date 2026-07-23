@@ -202,7 +202,7 @@ class ChatGPTScraper(PlatformScraper):
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
             if self.handle_rate_limit():
-                raise TimeoutError("Rate limited by ChatGPT — waited 3 minutes before retry.")
+                time.sleep(0.5)
             # Most reliable signal: URL changes from '/' to '/c/{id}' on submission
             if "/c/" in page.url:
                 return
@@ -271,20 +271,76 @@ class ChatGPTScraper(PlatformScraper):
             if stable_rounds >= 3:
                 return
 
-            # Check for rate limit modal mid-generation
             if self.handle_rate_limit():
-                raise TimeoutError("Rate limited by ChatGPT — waited 3 minutes before retry.")
+                stable_rounds = 0
+                time.sleep(0.5)
 
             time.sleep(0.8)
 
         raise TimeoutError("Timed out waiting for ChatGPT response to finish.")
 
-    _handle_rate_limit = PlatformScraper.handle_rate_limit
+    def handle_rate_limit(self, wait_seconds: int = 0) -> bool:
+        """Detect and click 'Got it' or popup modals in ChatGPT immediately without 3-minute sleep."""
+        page = self.require_page()
+        try:
+            clicked = False
+            # 1. Click explicit 'Got it', 'OK', 'Dismiss' buttons
+            close_selectors = [
+                "button:has-text('Got it')",
+                "button:has-text('OK')",
+                "button:has-text('Dismiss')",
+                "button:has-text('I understand')",
+                "button:has-text('Stay logged out')",
+                "button:has-text('Maybe later')",
+                "button:has-text('No thanks')",
+                "button:has-text('Not now')",
+                "button:has-text('Skip')",
+                "button:has-text('Later')",
+                "[data-testid='modal-close']",
+            ]
+            for selector in close_selectors:
+                try:
+                    btn = page.locator(selector).first
+                    if btn.count() and btn.is_visible(timeout=300):
+                        btn.evaluate("el => el.click()")
+                        clicked = True
+                        time.sleep(0.3)
+                except PlaywrightError:
+                    continue
+
+            # 2. Check for rate limit / modal text in body and click dialog buttons (skipping voice button)
+            try:
+                body_text = page.locator("body").inner_text(timeout=1_000)
+                if re.search(r"(too many requests|you've reached your limit|rate limit|slow down|please wait)", body_text, re.I):
+                    dialog_btns = page.locator("[role='dialog'] button, div[class*='modal'] button").all()
+                    for btn in dialog_btns:
+                        lbl = (btn.get_attribute("aria-label") or btn.inner_text() or "").lower().strip()
+                        if any(w in lbl for w in ["voice", "start", "try", "enable", "microphone", "record"]):
+                            continue
+                        if btn.is_visible(timeout=300):
+                            btn.evaluate("el => el.click()")
+                            clicked = True
+                            time.sleep(0.3)
+                            break
+            except PlaywrightError:
+                pass
+
+            if clicked:
+                print("[chatgpt] Clicked 'Got it' / popup modal. Continuing scraping immediately...")
+                return True
+            return False
+        except Exception:
+            return False
+
+    _handle_rate_limit = handle_rate_limit
 
 
     def _dismiss_modal(self) -> None:
         """Close any blocking overlay or modal dialog using JS DOM removal."""
         page = self.require_page()
+
+        # 0. Check and click 'Got it' or info popups immediately
+        self.handle_rate_limit()
 
         # 1. Try Escape key first
         try:
