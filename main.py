@@ -37,6 +37,7 @@ OUTPUT_FIELDS = [
     "bkt_mentions",
     "bkt_tyres_mentions",
     "balkrishna_industries_limited_mentions",
+    "youforward_mentions",
 ]
 
 
@@ -257,6 +258,7 @@ def run_scrape(args) -> int:
                             bkt_count = len(re.findall(r"\bbkt\b", response_text, re.I))
                             bkt_tyres_count = len(re.findall(r"\bbkt[- ]?tyres\b", response_text, re.I))
                             balkrishna_count = len(re.findall(r"\bbalkrishna\s+industries\s+(?:limited|ltd\.?)\b", response_text, re.I))
+                            youforward_count = len(re.findall(r"\byou[- ]?forward\b", response_text, re.I))
                             today = date.today().isoformat()
 
                             if urls:
@@ -272,6 +274,7 @@ def run_scrape(args) -> int:
                                         "bkt_mentions": bkt_count if i == 0 else "",
                                         "bkt_tyres_mentions": bkt_tyres_count if i == 0 else "",
                                         "balkrishna_industries_limited_mentions": balkrishna_count if i == 0 else "",
+                                        "youforward_mentions": youforward_count if i == 0 else "",
                                     }
                                     for i, url in enumerate(urls)
                                 ]
@@ -288,11 +291,12 @@ def run_scrape(args) -> int:
                                         "bkt_mentions": bkt_count,
                                         "bkt_tyres_mentions": bkt_tyres_count,
                                         "balkrishna_industries_limited_mentions": balkrishna_count,
+                                        "youforward_mentions": youforward_count,
                                     }
                                 ]
                             append_rows(args.output, rows)
                             scraper.save_storage_state()
-                            print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}, bkt_mentions={bkt_count}, bkt_tyres_mentions={bkt_tyres_count}, balkrishna_industries_limited_mentions={balkrishna_count}")
+                            print(f"[{platform_name}] wrote {len(rows)} citation URL(s), meningococcal_mentions={mening_count}, bkt_mentions={bkt_count}, bkt_tyres_mentions={bkt_tyres_count}, balkrishna_industries_limited_mentions={balkrishna_count}, youforward_mentions={youforward_count}")
                             break
                         except Exception as exc:
                             if "Rate limited" in str(exc) and attempt < max_attempts:

@@ -268,5 +268,6 @@ Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; 
 | `bkt_mentions` | Count of "BKT" mentions in response |
 | `bkt_tyres_mentions` | Count of "BKT Tyres" mentions |
 | `balkrishna_industries_limited_mentions` | Count of full brand name mentions |
+| `youforward_mentions` | Count of "YouForward" mentions |
 
 
