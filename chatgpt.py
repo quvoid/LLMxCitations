@@ -189,20 +189,40 @@ class ChatGPTScraper(PlatformScraper):
         for selector in self.SEND_SELECTORS:
             button = page.locator(selector).last
             try:
-                if button.count() and button.is_visible(timeout=1_000) and button.is_enabled(timeout=1_000):
-                    button.click(timeout=5_000)
+                if button.count() and button.is_visible(timeout=1_000):
+                    button.evaluate("el => el.click()")
                     return True
             except PlaywrightError:
                 continue
         return False
 
+    def _send_prompt_if_not_started(self) -> None:
+        """If response has not started and text is still in prompt box, re-trigger send."""
+        page = self.require_page()
+        if "/c/" in page.url or self._any_stop_button_visible():
+            return
+        try:
+            box = self._find_prompt_box(timeout=1_000)
+            box_text = box.evaluate("el => (el.value || el.innerText || '').trim()")
+            if box_text:
+                print(f"[chatgpt] Resending prompt ('{box_text[:30]}...').")
+                box.evaluate("el => { el.focus(); }")
+                time.sleep(0.2)
+                if not self._click_send_button():
+                    page.keyboard.press("Enter")
+                time.sleep(0.5)
+        except Exception:
+            pass
+
     def _wait_for_response_to_start(self, before_text: str) -> None:
         """Wait until ChatGPT navigation confirms the prompt was accepted."""
         page = self.require_page()
         deadline = time.monotonic() + 75
+        last_resend_time = time.monotonic()
+
         while time.monotonic() < deadline:
-            if self.handle_rate_limit():
-                time.sleep(0.5)
+            dismissed = self.handle_rate_limit()
+
             # Most reliable signal: URL changes from '/' to '/c/{id}' on submission
             if "/c/" in page.url:
                 return
@@ -212,7 +232,14 @@ class ChatGPTScraper(PlatformScraper):
             current_text = self._main_text()
             if current_text and current_text != before_text and len(current_text) > len(before_text):
                 return
-            time.sleep(0.3)
+
+            # If a modal was dismissed OR if 3s passed without response starting, re-send prompt if text is stuck in box
+            now = time.monotonic()
+            if dismissed or (now - last_resend_time >= 3.0):
+                self._send_prompt_if_not_started()
+                last_resend_time = now
+
+            time.sleep(0.4)
         raise TimeoutError("Timed out waiting for ChatGPT response to start.")
 
     def _wait_for_generation_to_finish(self) -> None:
