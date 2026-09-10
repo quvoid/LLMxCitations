@@ -26,11 +26,11 @@ class GeminiScraper(PlatformScraper):
     }
 
     PROMPT_SELECTORS = [
+        "rich-textarea .ql-editor",
         "rich-textarea [contenteditable='true']",
-        "[contenteditable='true'][role='textbox']",
         "div[aria-label*='Enter a prompt' i][contenteditable='true']",
+        "[contenteditable='true'][role='textbox']",
         "textarea[aria-label*='Enter a prompt' i]",
-        "[contenteditable='true']",
     ]
 
     SEND_SELECTORS = [
@@ -171,11 +171,11 @@ class GeminiScraper(PlatformScraper):
         while time.monotonic() < deadline:
             if page.is_closed():
                 raise RuntimeError("Gemini page closed while waiting for the prompt textbox.")
-            # Check prompt selectors first to avoid blocking on false-positive security challenge/login text
+            self._dismiss_modal()
             for selector in self.PROMPT_SELECTORS:
-                locator = page.locator(selector).last
+                locator = page.locator(selector).first
                 try:
-                    if locator.count() and locator.is_visible(timeout=1_000):
+                    if locator.count() and locator.is_visible(timeout=800):
                         return locator
                 except PlaywrightError:
                     continue
@@ -187,14 +187,9 @@ class GeminiScraper(PlatformScraper):
                         "Complete it manually in the browser; the scraper will continue afterward."
                     )
                     login_notice_printed = True
-                deadline = time.monotonic() + (timeout / 1000)
                 time.sleep(2.0)
-
-            try:
-                page.wait_for_load_state("networkidle", timeout=2_000)
-            except PlaywrightTimeoutError:
-                pass
-            time.sleep(0.5)
+            else:
+                time.sleep(0.5)
 
         raise RuntimeError("Could not find Gemini prompt textbox.")
 
@@ -331,11 +326,13 @@ class GeminiScraper(PlatformScraper):
 
     def _login_or_challenge_visible(self) -> bool:
         page = self.require_page()
+        if "accounts.google.com" in page.url or "consent.google" in page.url:
+            return True
         try:
             text = page.locator("body").inner_text(timeout=1_000)
         except PlaywrightError:
             return False
-        return bool(re.search(r"(sign in|log in|choose an account|verify|not a robot|consent)", text, re.I))
+        return bool(re.search(r"(verify you are human|unusual traffic|not a robot|solve the challenge)", text, re.I))
 
     def _clean_external_url(self, href: str) -> str:
         if not href:

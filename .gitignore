@@ -17,3 +17,7 @@ output.csv
 .idea/
 .DS_Store
 Thumbs.db
+venv/
+*.png
+output_backup_*.csv
+

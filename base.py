@@ -71,7 +71,36 @@ class PlatformScraper(ABC):
         if self.context is None:
             self.context = self._new_context()
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+        self.captured_network_responses: list[dict] = []
+        self._setup_network_listener()
         return self
+
+    def _setup_network_listener(self) -> None:
+        if self.page is None:
+            return
+
+        def handle_response(response):
+            try:
+                url = response.url
+                # Capture backend conversation / backend API responses
+                if any(endpoint in url for endpoint in ["/backend-api/", "/conversation", "/api/"]):
+                    content_type = response.headers.get("content-type", "")
+                    if "json" in content_type or "text/event-stream" in content_type or "text/plain" in content_type:
+                        try:
+                            body = response.text()
+                            self.captured_network_responses.append({
+                                "url": url,
+                                "status": response.status,
+                                "headers": response.headers,
+                                "body": body[:50000]  # cap body length for safety
+                            })
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        self.page.on("response", handle_response)
+
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.save_storage_state()

@@ -15,7 +15,8 @@ class ChatGPTScraper(PlatformScraper):
     start_url = "https://chatgpt.com/"
 
     # Minimum seconds between prompts for this platform (overrides --min-delay if higher)
-    RATE_LIMIT_DELAY: float = 20.0
+    RATE_LIMIT_DELAY: float = 1.0
+
 
     INTERNAL_HOSTS = {
         "chatgpt.com",
@@ -30,11 +31,16 @@ class ChatGPTScraper(PlatformScraper):
     PROMPT_SELECTORS = [
         "#prompt-textarea",
         "[data-testid='prompt-textarea']",
+        "textarea#prompt-textarea",
+        "div#prompt-textarea",
+        "textarea",
         "[contenteditable='true'][id='prompt-textarea']",
         "[contenteditable='true'][data-testid='prompt-textarea']",
         "textarea[placeholder*='Message']",
         "[contenteditable='true'][role='textbox']",
+        "[contenteditable='true']",
     ]
+
 
     SEND_SELECTORS = [
         "button[data-testid='send-button']",
@@ -55,32 +61,86 @@ class ChatGPTScraper(PlatformScraper):
         self._dismiss_modal()
         self._find_prompt_box(timeout=900_000)
 
+    def _check_and_handle_anonymous_limit(self) -> bool:
+        """If anonymous message limit reached popup or 'Clear current chat' is displayed, handle it and start fresh."""
+        page = self.require_page()
+        try:
+            # Handle 'Clear current chat?' popup immediately
+            clear_btn = page.locator("button:has-text('Clear chat'), button:has-text('Clear current chat')").first
+            if clear_btn.count() and clear_btn.is_visible(timeout=300):
+                clear_btn.evaluate("el => el.click()")
+                time.sleep(0.5)
+                return True
+
+            body_text = page.locator("body").inner_text(timeout=500)
+            if re.search(r"(message limit reached|reached the anonymous message limit|anonymous message limit|clear current chat)", body_text, re.I):
+                print("[chatgpt] Anonymous limit / Clear chat modal detected! Resetting session...", flush=True)
+                # 1. Try clicking 'Clear chat' or 'New chat' if visible
+                try:
+                    action_btn = page.locator("button:has-text('Clear chat'), button:has-text('New chat'), a:has-text('New chat')").first
+                    if action_btn.count() and action_btn.is_visible(timeout=300):
+                        action_btn.evaluate("el => el.click()")
+                        time.sleep(0.5)
+                except Exception:
+                    pass
+
+                # 2. Clear browser storage (localStorage, sessionStorage, indexedDB)
+                try:
+                    page.evaluate("""
+                        () => {
+                            try { localStorage.clear(); } catch(e) {}
+                            try { sessionStorage.clear(); } catch(e) {}
+                            try {
+                                if (window.indexedDB && indexedDB.databases) {
+                                    indexedDB.databases().then(dbs => {
+                                        for (let db of dbs) indexedDB.deleteDatabase(db.name);
+                                    });
+                                }
+                            } catch(e) {}
+                        }
+                    """)
+                except Exception:
+                    pass
+
+                # 3. Clear cookies
+                try:
+                    page.context.clear_cookies()
+                except Exception:
+                    pass
+
+                # 4. Navigate to fresh ChatGPT page
+                try:
+                    page.goto(self.start_url, wait_until="domcontentloaded", timeout=30_000)
+                    time.sleep(1.5)
+                    self._dismiss_modal()
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+        return False
+
     def submit_prompt(self, prompt: str) -> None:
         page = self.require_page()
-        page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
-        self._handle_rate_limit()  # check for rate limit right on page load
-        box = self._find_prompt_box(timeout=900_000)
+
+        box = self._find_prompt_box(timeout=30_000)
         before_text = self._main_text()
 
-        # Use JS to focus and click — bypasses any overlay interception
         try:
-            box.evaluate("el => { el.focus(); el.click(); }")
-        except PlaywrightError:
+            box.click(timeout=2_000)
+        except Exception:
             pass
 
-        # Try fill first, fall back to keyboard typing
-        try:
-            box.fill(prompt, timeout=10_000)
-        except PlaywrightError:
-            try:
-                page.keyboard.press("Control+a")
-                page.keyboard.type(prompt, delay=10)
-            except PlaywrightError:
-                pass
+        box.fill(prompt)
+        time.sleep(0.2)
 
-        if not self._click_send_button():
-            page.keyboard.press("Enter")
+        # Press Enter directly on prompt box
+        box.press("Enter")
+        time.sleep(0.4)
+
+        # Click send button only if not already sending
+        self._click_send_button()
 
         self._wait_for_response_to_start(before_text)
         self._wait_for_generation_to_finish()
@@ -88,29 +148,45 @@ class ChatGPTScraper(PlatformScraper):
     def get_citation_urls(self) -> list[str]:
         page = self.require_page()
 
-        # ChatGPT hides source URLs inside a collapsible 'Sources' panel — expand it first
+        # ChatGPT hides source URLs inside a collapsible 'Sources' / citations panel — expand it first
         try:
-            sources_btn = page.locator(
-                "[class*='footnote'], button[aria-label*='source' i], "
-                "button:has-text('Sources'), [aria-label='Sources']"
-            ).last
-            if sources_btn.count() and sources_btn.is_visible(timeout=1_500):
-                sources_btn.evaluate("el => el.click()")
-                time.sleep(2.0)  # wait for panel to load URLs
+            sources_selectors = [
+                "button[data-testid*='source']",
+                "button:has-text('Sources')",
+                "button[aria-label*='source' i]",
+                "button[aria-label*='Sources' i]",
+                "[class*='footnote']",
+                "[class*='citation']",
+                "[data-testid='source-panel-button']",
+            ]
+            for sel in sources_selectors:
+                sources_btn = page.locator(sel).last
+                if sources_btn.count() and sources_btn.is_visible(timeout=800):
+                    sources_btn.evaluate("el => el.click()")
+                    time.sleep(1.0)
+                    break
         except PlaywrightError:
             pass
 
-        # Now extract all external links + data-url attributes
+        # Now extract all external links + data-url attributes + attribution links
         try:
             all_hrefs: list[str] = page.evaluate("""
                 () => {
                     const hrefs = new Set();
-                    document.querySelectorAll('a[href]').forEach(el => hrefs.add(el.href));
-                    document.querySelectorAll('[data-url],[data-href],[data-source-url]').forEach(el => {
+                    document.querySelectorAll('a[href]').forEach(el => {
+                        if (el.href && !el.href.startsWith('javascript:')) hrefs.add(el.href);
+                    });
+                    document.querySelectorAll('[data-url],[data-href],[data-source-url],[data-attribution-url],[data-item-url]').forEach(el => {
                         const u = el.getAttribute('data-url')
                                 || el.getAttribute('data-href')
-                                || el.getAttribute('data-source-url');
+                                || el.getAttribute('data-source-url')
+                                || el.getAttribute('data-attribution-url')
+                                || el.getAttribute('data-item-url');
                         if (u) hrefs.add(u);
+                    });
+                    // Search inside assistant messages, citations, and product cards
+                    document.querySelectorAll('[data-message-author-role=\"assistant\"], [class*=\"citation\"], [class*=\"product\"], [class*=\"source\"], section, article').forEach(container => {
+                        container.querySelectorAll('a').forEach(a => { if (a.href) hrefs.add(a.href); });
                     });
                     return Array.from(hrefs);
                 }
@@ -136,18 +212,26 @@ class ChatGPTScraper(PlatformScraper):
         for selector in [
             "[data-message-author-role='assistant']:last-of-type",
             "[data-message-author-role='assistant']",
+            ".wm-app-threadContent [data-message-author-role='assistant']",
+            ".wm-app-threadContent article",
+            ".wm-app-threadContent div.markdown",
+            ".wm-app-conversation article",
+            "article[data-testid*='conversation-turn']",
             "main .markdown",
-            "main",
         ]:
             try:
                 locator = page.locator(selector).last
-                if locator.count():
+                if locator.count() and locator.is_visible(timeout=500):
                     text = locator.inner_text(timeout=2_000).strip()
-                    if text:
+                    if text and not text.startswith("SettingsAppearance") and len(text) > 10:
                         return text
             except PlaywrightError:
                 continue
-        return self._main_text()
+
+        main_t = self._main_text()
+        if main_t and not main_t.startswith("SettingsAppearance") and not main_t.startswith("ChatGPT:"):
+            return main_t
+        return ""
 
     def _find_prompt_box(self, timeout: int):
         page = self.require_page()
@@ -187,12 +271,15 @@ class ChatGPTScraper(PlatformScraper):
     def _click_send_button(self) -> bool:
         page = self.require_page()
         for selector in self.SEND_SELECTORS:
-            button = page.locator(selector).last
             try:
-                if button.count() and button.is_visible(timeout=1_000):
+                button = page.locator(selector).first
+                if button.count() and button.is_visible(timeout=500):
+                    aria_lbl = (button.get_attribute("aria-label") or button.inner_text() or "").lower()
+                    if any(w in aria_lbl for w in ["voice", "speech", "dictate", "mic", "record"]):
+                        continue
                     button.evaluate("el => el.click()")
                     return True
-            except PlaywrightError:
+            except Exception:
                 continue
         return False
 
@@ -202,33 +289,39 @@ class ChatGPTScraper(PlatformScraper):
         if "/c/" in page.url or self._any_stop_button_visible():
             return
         try:
+            if page.locator("[data-message-author-role='assistant'], div.markdown, article, .agent-turn").count() > 0:
+                return
             box = self._find_prompt_box(timeout=1_000)
             box_text = box.evaluate("el => (el.value || el.innerText || '').trim()")
             if box_text:
-                print(f"[chatgpt] Resending prompt ('{box_text[:30]}...').")
-                box.evaluate("el => { el.focus(); }")
+                box.press("Enter")
                 time.sleep(0.2)
-                if not self._click_send_button():
-                    page.keyboard.press("Enter")
-                time.sleep(0.5)
+                self._click_send_button()
         except Exception:
             pass
 
     def _wait_for_response_to_start(self, before_text: str) -> None:
-        """Wait until ChatGPT navigation confirms the prompt was accepted."""
+        """Wait until ChatGPT navigation or response start confirms prompt was accepted."""
         page = self.require_page()
-        deadline = time.monotonic() + 75
+        deadline = time.monotonic() + 45
         last_resend_time = time.monotonic()
 
         while time.monotonic() < deadline:
-            dismissed = self.handle_rate_limit()
+            dismissed = self.handle_rate_limit() or self._check_and_handle_anonymous_limit()
 
-            # Most reliable signal: URL changes from '/' to '/c/{id}' on submission
+            # Signal 1: URL changes to '/c/{id}'
             if "/c/" in page.url:
                 return
-            # Fallback: stop button appeared or text grew
+            # Signal 2: Stop button appeared
             if self._any_stop_button_visible():
                 return
+            # Signal 3: Assistant message turn appeared (vital for unauthenticated guest mode)
+            try:
+                if page.locator("[data-message-author-role='assistant'], div.markdown, article, .agent-turn").count() > 0:
+                    return
+            except PlaywrightError:
+                pass
+            # Signal 4: Main page text grew
             current_text = self._main_text()
             if current_text and current_text != before_text and len(current_text) > len(before_text):
                 return
@@ -242,6 +335,7 @@ class ChatGPTScraper(PlatformScraper):
             time.sleep(0.4)
         raise TimeoutError("Timed out waiting for ChatGPT response to start.")
 
+
     def _wait_for_generation_to_finish(self) -> None:
         page = self.require_page()
 
@@ -254,14 +348,14 @@ class ChatGPTScraper(PlatformScraper):
         except (PlaywrightError, PlaywrightTimeoutError):
             pass
 
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 45
         stable_rounds = 0
         previous_text = ""
 
         while time.monotonic() < deadline:
             # Still generating if stop button is visible
             try:
-                stop = page.locator("button[data-testid='stop-button']").first
+                stop = page.locator("button[data-testid='stop-button'], main button[aria-label*='Stop']").first
                 if stop.count() and stop.is_visible(timeout=300):
                     stable_rounds = 0
                     time.sleep(0.5)
@@ -274,7 +368,8 @@ class ChatGPTScraper(PlatformScraper):
                 done = page.locator(
                     "[data-testid='good-response-turn-action-button'], "
                     "[data-testid='bad-response-turn-action-button'], "
-                    "[data-testid='copy-turn-action-button']"
+                    "[data-testid='copy-turn-action-button'], "
+                    "button[aria-label*='Copy']"
                 ).last
                 if done.count() and done.is_visible(timeout=300):
                     time.sleep(0.5)
@@ -282,10 +377,21 @@ class ChatGPTScraper(PlatformScraper):
             except PlaywrightError:
                 pass
 
-            # Fallback: last assistant message text stability (3 × 0.8s = 2.4s stable)
+            # Check if send button re-appeared (meaning streaming turn completed)
             try:
-                last_msg = page.locator("[data-message-author-role='assistant']").last
-                current_text = last_msg.inner_text(timeout=2_000).strip() if last_msg.count() else ""
+                send_btn = page.locator("button[data-testid='send-button'], button[aria-label*='Send']").first
+                if send_btn.count() and send_btn.is_visible(timeout=200):
+                    time.sleep(0.5)
+                    return
+            except PlaywrightError:
+                pass
+
+            # Fallback: assistant message / markdown container text stability
+            try:
+                last_msg = page.locator("[data-message-author-role='assistant'], div.markdown, article, .agent-turn").last
+                current_text = last_msg.inner_text(timeout=1_000).strip() if last_msg.count() else ""
+                if not current_text:
+                    current_text = self._main_text()
             except PlaywrightError:
                 current_text = ""
 
@@ -295,8 +401,10 @@ class ChatGPTScraper(PlatformScraper):
                 stable_rounds = 0
                 previous_text = current_text
 
-            if stable_rounds >= 3:
+            if stable_rounds >= 2 and len(current_text) > 30:
                 return
+
+
 
             if self.handle_rate_limit():
                 stable_rounds = 0
@@ -307,53 +415,57 @@ class ChatGPTScraper(PlatformScraper):
         raise TimeoutError("Timed out waiting for ChatGPT response to finish.")
 
     def handle_rate_limit(self, wait_seconds: int = 0) -> bool:
-        """Detect and click 'Got it' or popup modals in ChatGPT immediately without 3-minute sleep."""
+        """Detect and click dialog popup modals in ChatGPT without triggering accidental chat discards."""
         page = self.require_page()
         try:
             clicked = False
-            # 1. Click explicit 'Got it', 'OK', 'Dismiss' buttons
-            close_selectors = [
-                "button:has-text('Got it')",
-                "button:has-text('OK')",
-                "button:has-text('Dismiss')",
-                "button:has-text('I understand')",
-                "button:has-text('Stay logged out')",
-                "button:has-text('Maybe later')",
-                "button:has-text('No thanks')",
-                "button:has-text('Not now')",
-                "button:has-text('Skip')",
-                "button:has-text('Later')",
-                "[data-testid='modal-close']",
-            ]
-            for selector in close_selectors:
-                try:
-                    btn = page.locator(selector).first
-                    if btn.count() and btn.is_visible(timeout=300):
-                        btn.evaluate("el => el.click()")
-                        clicked = True
-                        time.sleep(0.3)
-                except PlaywrightError:
-                    continue
-
-            # 2. Check for rate limit / modal text in body and click dialog buttons (skipping voice button)
+            # Search strictly within open dialogs / modal overlays
             try:
-                body_text = page.locator("body").inner_text(timeout=1_000)
-                if re.search(r"(too many requests|you've reached your limit|rate limit|slow down|please wait)", body_text, re.I):
-                    dialog_btns = page.locator("[role='dialog'] button, div[class*='modal'] button").all()
-                    for btn in dialog_btns:
-                        lbl = (btn.get_attribute("aria-label") or btn.inner_text() or "").lower().strip()
-                        if any(w in lbl for w in ["voice", "start", "try", "enable", "microphone", "record"]):
-                            continue
-                        if btn.is_visible(timeout=300):
+                dialogs = page.locator("[role='dialog'], div[class*='modal'], div.popover, div[data-state='open']").all()
+                for dlg in dialogs:
+                    if not dlg.is_visible(timeout=200):
+                        continue
+                    dlg_text = dlg.inner_text(timeout=200).lower()
+
+                    # Priority 1: Clear current chat popup
+                    if "clear current chat" in dlg_text or "discarded" in dlg_text:
+                        clear_btn = dlg.locator("button:has-text('Clear chat'), button:has-text('Clear')").first
+                        if clear_btn.count() and clear_btn.is_visible(timeout=300):
+                            clear_btn.evaluate("el => el.click()")
+                            clicked = True
+                            time.sleep(0.4)
+                            break
+
+                    # Priority 2: Dismissive modal buttons
+                    modal_close_selectors = [
+                        "button[aria-label='Close']",
+                        "button[aria-label='Dismiss']",
+                        "[data-testid='modal-close']",
+                        "button:has-text('Got it')",
+                        "button:has-text('OK')",
+                        "button:has-text('Dismiss')",
+                        "button:has-text('Stay logged out')",
+                        "button:has-text('Maybe later')",
+                        "button:has-text('No thanks')",
+                        "button:has-text('Not now')",
+                        "button:has-text('Skip')",
+                        "button:has-text('Later')",
+                        "button:has-text('Continue on ChatGPT')",
+                    ]
+                    for sel in modal_close_selectors:
+                        btn = dlg.locator(sel).first
+                        if btn.count() and btn.is_visible(timeout=200):
                             btn.evaluate("el => el.click()")
                             clicked = True
                             time.sleep(0.3)
                             break
+                    if clicked:
+                        break
             except PlaywrightError:
                 pass
 
             if clicked:
-                print("[chatgpt] Clicked 'Got it' / popup modal. Continuing scraping immediately...")
+                print("[chatgpt] Dismissed popup modal. Continuing scraping...", flush=True)
                 return True
             return False
         except Exception:
@@ -366,47 +478,22 @@ class ChatGPTScraper(PlatformScraper):
         """Close any blocking overlay or modal dialog using JS DOM removal."""
         page = self.require_page()
 
-        # 0. Check and click 'Got it' or info popups immediately
+        # 0. Check and click 'Got it' or info popups inside dialogs
         self.handle_rate_limit()
 
         # 1. Try Escape key first
         try:
             page.keyboard.press("Escape")
-            time.sleep(0.4)
+            time.sleep(0.3)
         except PlaywrightError:
             pass
 
-        # 2. Try clicking common close/dismiss buttons via JS
-        close_selectors = [
-            "button[aria-label='Close']",
-            "button[aria-label='Dismiss']",
-            "button[aria-label='close']",
-            "[data-testid='modal-close']",
-            "button:has-text('Maybe later')",
-            "button:has-text('No thanks')",
-            "button:has-text('Not now')",
-            "button:has-text('Skip')",
-            "button:has-text('Got it')",
-            "button:has-text('Dismiss')",
-            "button:has-text('Stay logged out')",
-            "button:has-text('Later')",
-        ]
-        for selector in close_selectors:
-            try:
-                btn = page.locator(selector).first
-                if btn.count() and btn.is_visible(timeout=300):
-                    btn.evaluate("el => el.click()")
-                    time.sleep(0.4)
-                    break
-            except PlaywrightError:
-                continue
-
-        # 3. JS: search dialogs for close buttons, explicitly skip voice/start/try buttons
+        # 2. JS: search dialogs for close buttons, explicitly skip voice/start/try buttons
         try:
             page.evaluate("""
                 () => {
                     const SKIP = ['voice', 'start', 'try', 'enable', 'microphone', 'record'];
-                    const CLOSE = ['close', 'dismiss', 'skip', 'later', 'no thanks', 'not now', 'got it'];
+                    const CLOSE = ['clear chat', 'close', 'dismiss', 'stay logged out', 'skip', 'later', 'no thanks', 'not now', 'got it', 'ok'];
                     const dialogs = document.querySelectorAll('[role="dialog"], [data-state="open"]');
                     for (const dlg of dialogs) {
                         for (const btn of dlg.querySelectorAll('button')) {
@@ -465,7 +552,11 @@ class ChatGPTScraper(PlatformScraper):
             text = page.locator("body").inner_text(timeout=1_000)
         except PlaywrightError:
             return False
+        if self.platform_name.endswith("_anon"):
+            # Anonymous guest mode intentionally has "Log in" / "Sign up" buttons in the sidebar
+            return bool(re.search(r"(verify you are human|just a moment|cloudflare)", text, re.I))
         return bool(re.search(r"(log in|sign up|verify you are human|just a moment|cloudflare)", text, re.I))
+
 
     def _clean_external_url(self, href: str) -> str:
         if not href:
