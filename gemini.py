@@ -143,8 +143,18 @@ class GeminiScraper(PlatformScraper):
         # 3. Links Gemini placed in the answer, from the network stream. Gemini tags
         # these with utm_source=gemini; the other stream URLs are pages it read.
         found.extend(u for u in self.payload_urls() if "utm_source=gemini" in u)
+        found.extend(self.payload_citations())
 
         return dedupe_preserve_order(found)
+
+    def payload_citations(self) -> list[str]:
+        """Pages listed in Gemini's Sources panel for this answer (see dashboard/data.py)."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "dashboard"))
+        from data import gemini_citations
+        blob = "\n".join(c.get("body", "") for c in self.captured_network_responses)
+        return [u for u in (self._clean_external_url(x) for x in gemini_citations(blob)[0]) if u]
 
     def payload_urls(self, wait_seconds: float = 8.0) -> list[str]:
         """Every external URL in the captured StreamGenerate response, in order."""

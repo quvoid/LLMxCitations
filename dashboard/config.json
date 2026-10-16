@@ -1,6 +1,111 @@
 {
   "projects": [
     {
+      "id": "motorola",
+      "name": "Motorola – expanded prompts",
+      "source": [
+        "moto_chatgpt.csv",
+        "moto_gemini.csv"
+      ],
+      "own_brand": "Motorola",
+      "brands": {
+        "Motorola": {
+          "match": "motorola|\\bmoto\\b",
+          "domains": [
+            "motorola.com",
+            "motorola.in"
+          ]
+        },
+        "Samsung": {
+          "match": "samsung|\\bgalaxy\\b",
+          "domains": [
+            "samsung.com"
+          ]
+        },
+        "Apple": {
+          "match": "\\bapple\\b|iphone",
+          "domains": [
+            "apple.com"
+          ]
+        },
+        "Xiaomi / Redmi": {
+          "match": "xiaomi|redmi",
+          "domains": [
+            "mi.com",
+            "xiaomi.com"
+          ]
+        },
+        "POCO": {
+          "match": "\\bpoco\\b",
+          "domains": [
+            "po.co"
+          ]
+        },
+        "OnePlus": {
+          "match": "oneplus",
+          "domains": [
+            "oneplus.in",
+            "oneplus.com"
+          ]
+        },
+        "Vivo / iQOO": {
+          "match": "\\bvivo\\b|iqoo",
+          "domains": [
+            "vivo.com",
+            "iqoo.com"
+          ]
+        },
+        "OPPO": {
+          "match": "\\boppo\\b",
+          "domains": [
+            "oppo.com"
+          ]
+        },
+        "Realme": {
+          "match": "realme",
+          "domains": [
+            "realme.com"
+          ]
+        },
+        "Google Pixel": {
+          "match": "\\bpixel\\b",
+          "domains": [
+            "store.google.com"
+          ]
+        },
+        "Nothing / CMF": {
+          "match": "nothing phone|\\bcmf\\b",
+          "domains": [
+            "nothing.tech"
+          ]
+        },
+        "Nokia": {
+          "match": "nokia",
+          "domains": [
+            "nokia.com"
+          ]
+        },
+        "Lava": {
+          "match": "\\blava\\b",
+          "domains": [
+            "lavamobiles.com"
+          ]
+        },
+        "Infinix": {
+          "match": "infinix",
+          "domains": [
+            "infinixmobility.com"
+          ]
+        },
+        "Tecno": {
+          "match": "tecno",
+          "domains": [
+            "tecno-mobile.com"
+          ]
+        }
+      }
+    },
+    {
       "id": "ambani",
       "name": "Anant Ambani (reputation)",
       "source": "ambani_output.csv",

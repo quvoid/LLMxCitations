@@ -92,8 +92,14 @@ def read_run(path: Path, platforms: set[str] | None = None) -> list[dict]:
                 if clean not in ans["cited"]:
                     ans["cited"].append(clean)
             if row.get("raw_payload") and not ans["read"] and not ans["queries"]:
-                ans["queries"], ans["read"] = data.mine_payload(
-                    json.dumps([payload_streams(row["raw_payload"], prompt)]))
+                if platform.startswith("gemini"):
+                    ans["queries"], ans["read"] = data.mine_payload(row["raw_payload"])
+                    for u in data.payload_gemini_citations(row["raw_payload"]):
+                        if u not in ans["cited"]:
+                            ans["cited"].append(u)
+                else:
+                    ans["queries"], ans["read"] = data.mine_payload(
+                        json.dumps([payload_streams(row["raw_payload"], prompt)]))
     for ans in answers.values():
         cited = {data.url_key(u) for u in ans["cited"]}
         ans["read_only"] = [u for u in ans["read"] if data.url_key(u) not in cited]
@@ -148,7 +154,7 @@ def main() -> None:
         b = data.owner_of(data.domain_of(url), owned)
         return brands[b] if b is not None else ""
 
-    current = read_run(data.REPO / project["source"])
+    current = [a for path in data.source_files(project) for a in read_run(path)]
     for a in current:
         a["brands"] = data.detect_brands(a["text"], patterns)  # [idx, mentions, rank]
     platforms = sorted({a["platform"] for a in current})

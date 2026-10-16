@@ -23,7 +23,7 @@ build_lock = threading.Lock()
 
 
 def projects() -> list[dict]:
-    return [p for p in data.load_config()["projects"] if (data.REPO / p["source"]).exists()]
+    return [p for p in data.load_config()["projects"] if data.source_files(p)]
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -51,7 +51,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         if parts == ["api", "projects"]:
             return self.send_json([
-                {"id": p["id"], "name": p["name"], "source": p["source"]} for p in projects()
+                {"id": p["id"], "name": p["name"], "source": ", ".join(f.name for f in data.source_files(p))} for p in projects()
             ])
 
         if len(parts) == 3 and parts[1] == "project":

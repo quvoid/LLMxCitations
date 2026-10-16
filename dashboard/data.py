@@ -22,7 +22,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent
 CACHE = ROOT / "cache"
-CACHE_VERSION = 7
+CACHE_VERSION = 9
 
 limit = sys.maxsize
 while True:
@@ -124,6 +124,57 @@ def gemini_stream_urls(blob: str) -> list[str]:
     return list(dict.fromkeys(u for u in urls if not is_widget(u)))
 
 
+def gemini_citations(blob: str) -> tuple[list[str], int]:
+    """(cited pages, Sources-panel entries) from a Gemini StreamGenerate capture.
+
+    Every row in Gemini's Sources panel is a quote, sent as the page URL plus a
+    #:~:text= fragment; the same page can appear several times. The final
+    chunk also lists the unique cited pages. Both count as cited.
+    """
+    final = None
+    for line in blob.splitlines():
+        if not line.startswith('[["wrb.fr"'):
+            continue
+        try:
+            inner = json.loads(line)[0][2]
+            chunk = json.loads(inner) if inner else None
+        except (ValueError, IndexError, TypeError):
+            continue
+        if isinstance(chunk, list) and len(chunk) > 4 and chunk[4]:
+            final = chunk
+    if final is None:
+        return [], 0
+    pages: list[str] = []
+    entries = 0
+
+    def walk(node, in_list: bool) -> None:
+        nonlocal entries
+        if isinstance(node, str):
+            if node.startswith("http") and not GOOGLE_HOST_RE.search(domain_of(node)):
+                if "#:~:text=" in node:
+                    entries += 1
+                    pages.append(clean_url(node))
+                elif in_list:
+                    pages.append(clean_url(node))
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, in_list)
+
+    for candidate in final[4]:
+        if isinstance(candidate, list):
+            walk(candidate[2] if len(candidate) > 2 else None, False)
+            walk(candidate[37] if len(candidate) > 37 else None, True)
+    return list(dict.fromkeys(u for u in pages if not is_widget(u))), entries
+
+
+def payload_gemini_citations(raw: str) -> list[str]:
+    try:
+        blob = "\n".join(p if isinstance(p, str) else json.dumps(p) for p in json.loads(raw))
+    except (ValueError, TypeError):
+        blob = raw
+    return gemini_citations(blob)[0]
+
+
 def detect_brands(text: str, patterns: list[tuple[int, re.Pattern]]) -> list[list[int]]:
     """Return [[brand_index, mention_count, rank]] ordered by first mention."""
     hits = []
@@ -149,8 +200,19 @@ def owner_of(domain: str, owned: list[tuple[str, int]]) -> int | None:
     return None
 
 
+def source_files(project: dict) -> list[Path]:
+    """A project's source is one CSV or a list of them (e.g. one per platform)."""
+    names = project["source"] if isinstance(project["source"], list) else [project["source"]]
+    return [REPO / n for n in names if (REPO / n).exists()]
+
+
+def read_rows(project: dict):
+    for path in source_files(project):
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            yield from csv.DictReader(fh)
+
+
 def build_project(project: dict) -> tuple[dict, dict[str, str]]:
-    source = REPO / project["source"]
     brand_names = list(project["brands"])
     specs = [brand_spec(v) for v in project["brands"].values()]
     patterns = [(i, re.compile(match, re.I)) for i, (match, _) in enumerate(specs)]
@@ -164,8 +226,8 @@ def build_project(project: dict) -> tuple[dict, dict[str, str]]:
     texts: dict[str, str] = {}
     last_for_key: dict[tuple[str, str, str], str] = {}
 
-    with source.open(encoding="utf-8-sig", newline="") as fh:
-        for row in csv.DictReader(fh):
+    if True:
+        for row in read_rows(project):
             prompt = (row.get("prompt") or "").strip()
             if not prompt:
                 continue
@@ -212,6 +274,14 @@ def build_project(project: dict) -> tuple[dict, dict[str, str]]:
             raw_payload = row.get("raw_payload") or ""
             if raw_payload and not resp["q"] and not resp["_retrieved"]:
                 resp["q"], resp["_retrieved"] = mine_payload(raw_payload)
+                if platform.startswith("gemini"):
+                    for url in payload_gemini_citations(raw_payload):
+                        if url not in url_idx:
+                            url_idx[url] = len(urls)
+                            dom = domain_of(url)
+                            urls.append({"u": url, "dom": dom, "cat": "Website", "own": owner_of(dom, owned)})
+                        if url_idx[url] not in resp["c"]:
+                            resp["c"].append(url_idx[url])
 
     for resp in responses.values():
         retrieved = resp.pop("_retrieved")
@@ -222,7 +292,7 @@ def build_project(project: dict) -> tuple[dict, dict[str, str]]:
     dataset = {
         "id": project["id"],
         "name": project["name"],
-        "source": project["source"],
+        "source": ", ".join(p.name for p in source_files(project)),
         "own_brand": project.get("own_brand"),
         "brands": brand_names,
         "prompts": prompts,
@@ -233,10 +303,9 @@ def build_project(project: dict) -> tuple[dict, dict[str, str]]:
 
 
 def source_signature(project: dict) -> str:
-    source = REPO / project["source"]
-    stat = source.stat()
+    files = ";".join(f"{p.name}:{p.stat().st_size}:{int(p.stat().st_mtime)}" for p in source_files(project))
     brands = json.dumps(project["brands"], sort_keys=True)
-    return f"v{CACHE_VERSION}:{stat.st_size}:{int(stat.st_mtime)}:{hashlib.sha1(brands.encode()).hexdigest()[:8]}"
+    return f"v{CACHE_VERSION}:{files}:{hashlib.sha1(brands.encode()).hexdigest()[:8]}"
 
 
 def text_db() -> sqlite3.Connection:

@@ -187,6 +187,11 @@ class ChatGPTScraper(PlatformScraper):
         cited = self._payload_citations()
         if cited:
             return cited
+        if not self.captured_network_responses:
+            # Neither the stream nor the finished conversation could be read
+            # (usually a rate limit). Fail the prompt so it is retried on the
+            # next run instead of being saved with no sources.
+            raise RuntimeError("ChatGPT sources unavailable (conversation fetch failed)")
         return self._dom_citation_urls()
 
     def _payload_citations(self, wait_seconds: float = 8.0) -> list[str]:
@@ -205,9 +210,18 @@ class ChatGPTScraper(PlatformScraper):
         needles.discard("")
 
         def own_streams() -> list[dict]:
-            return [c for c in self.captured_network_responses if any(n in c.get("body", "") for n in needles)]
+            return [c for c in self.captured_network_responses
+                    if c.get("url") == "conversation" or any(n in c.get("body", "") for n in needles if n)]
 
-        deadline = time.monotonic() + wait_seconds
+        # ChatGPT now keeps the answer stream open after it finishes, so the
+        # stream capture often never completes. The finished conversation has
+        # the same content_references and search results, so fetch it instead.
+        conversation = self._fetch_conversation()
+        if conversation:
+            self.captured_network_responses[:] = [{"url": "conversation", "body": conversation}]
+            needles.add("")
+
+        deadline = time.monotonic() + (0 if conversation else wait_seconds)
         while not own_streams() and time.monotonic() < deadline:
             time.sleep(0.25)
         self.captured_network_responses[:] = [
@@ -243,7 +257,14 @@ class ChatGPTScraper(PlatformScraper):
                     walk(value)
 
         for captured in self.captured_network_responses:
-            for line in captured.get("body", "").splitlines():
+            body = captured.get("body", "")
+            if captured.get("url") == "conversation":
+                try:
+                    walk(json.loads(body))
+                except ValueError:
+                    pass
+                continue
+            for line in body.splitlines():
                 if not line.startswith("data: {"):
                     continue
                 try:
@@ -253,6 +274,32 @@ class ChatGPTScraper(PlatformScraper):
 
         urls = [url for raw in cited if (url := self._clean_external_url(raw))]
         return dedupe_preserve_order(urls)
+
+    def _fetch_conversation(self) -> str:
+        """The finished conversation JSON, fetched inside the page with its own session.
+
+        The access token is read and used inside the page only; it is never
+        returned to Python or saved.
+        """
+        page = self.require_page()
+        match = re.search(r"/c/([0-9a-f-]{36})", page.url)
+        if not match:
+            return ""
+        # Rate-limited accounts get HTTP 429 here; back off before giving up.
+        for delay in (2, 5, 10, 20, 40):
+            try:
+                body = page.evaluate("""async (id) => {
+                    const s = await (await fetch('/api/auth/session')).json();
+                    const r = await fetch('/backend-api/conversation/' + id,
+                        {headers: {Authorization: 'Bearer ' + s.accessToken}});
+                    return r.ok ? await r.text() : '';
+                }""", match.group(1))
+            except PlaywrightError:
+                body = ""
+            if body and "content_references" in body:
+                return body
+            time.sleep(delay)
+        return body or ""
 
     def _dom_citation_urls(self) -> list[str]:
         page = self.require_page()
