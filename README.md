@@ -271,3 +271,13 @@ Get-Process chrome, python -ErrorAction SilentlyContinue | Stop-Process -Force; 
 | `youforward_mentions` | Count of "YouForward" mentions |
 
 
+
+## Dashboard
+
+A local AI-visibility dashboard over the scraper output CSVs:
+
+```powershell
+python .\dashboard\server.py
+```
+
+Then open http://127.0.0.1:8765. Projects and their brand lists live in `dashboard/config.json` (one entry per output CSV, brands as regexes). Parsed data is cached in `dashboard/cache/` and rebuilt automatically when a CSV changes, so a new scrape shows up on reload.

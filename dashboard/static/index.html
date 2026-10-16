@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Visibility</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brandmark">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 14l3-4 3 3 4-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>AI Visibility</span>
+  </div>
+  <label class="project-pick">
+    <span class="sr">Project</span>
+    <select id="project"></select>
+  </label>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="prompts">Prompts</button>
+    <button role="tab" data-tab="sources">Sources</button>
+  </nav>
+</header>
+
+<main>
+  <div class="filters">
+    <div class="seg" id="platforms" role="group" aria-label="Platform"></div>
+    <label>Date <select id="date"></select></label>
+    <label>Your brand <select id="own"></select></label>
+    <span class="source-note" id="source-note"></span>
+  </div>
+
+  <div id="status" class="status">Loading…</div>
+
+  <section id="tab-overview" class="tab">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid two">
+      <article class="card span2">
+        <header><h2>Brand leaderboard</h2><p>How often each brand shows up in AI answers, and how early.</p></header>
+        <div class="table-wrap"><table class="lb" id="leaderboard"></table></div>
+      </article>
+
+      <article class="card span2" id="owned-card" hidden>
+        <header><h2>Whose websites get cited</h2><p>Share of answers that cite at least one page from each brand's own website. Your competitors' pages the AI trusts as sources.</p></header>
+        <div class="table-wrap"><table class="lb" id="owned"></table></div>
+      </article>
+
+      <article class="card" id="trend-card">
+        <header><h2>Visibility over time</h2><p>Share of answers mentioning each brand, by scrape date.</p></header>
+        <div id="trend"></div>
+      </article>
+
+      <article class="card">
+        <header><h2>Visibility by platform</h2><p>Share of answers on each platform that mention the brand.</p></header>
+        <div class="table-wrap"><table class="heat" id="by-platform"></table></div>
+      </article>
+
+      <article class="card">
+        <header><h2>Most cited domains</h2><p>Share of answers citing at least one page from the domain.</p></header>
+        <div id="top-domains" class="barlist"></div>
+      </article>
+
+      <article class="card">
+        <header><h2>Citation types</h2><p>What kind of sites the AI cites.</p></header>
+        <div id="categories" class="barlist"></div>
+      </article>
+
+      <article class="card span2">
+        <header><h2>Searches the AI ran</h2><p>Fan-out queries ChatGPT sent to its search engine before answering (from captured network payloads). These are the queries to rank for.</p></header>
+        <div id="queries" class="querylist"></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="tab-prompts" class="tab" hidden>
+    <div class="toolbar">
+      <input id="prompt-search" type="search" placeholder="Search prompts…" aria-label="Search prompts">
+      <label>Show <select id="prompt-filter">
+        <option value="all">All prompts</option>
+        <option value="own">Your brand mentioned</option>
+        <option value="own-top">Your brand ranked #1</option>
+        <option value="own-missing">Your brand missing</option>
+      </select></label>
+      <span class="count" id="prompt-count"></span>
+    </div>
+    <div class="card flush"><div class="table-wrap"><table class="data" id="prompt-table"></table></div></div>
+    <div class="pager" id="prompt-pager"></div>
+  </section>
+
+  <section id="tab-sources" class="tab" hidden>
+    <div class="toolbar">
+      <input id="source-search" type="search" placeholder="Search domains…" aria-label="Search domains">
+      <label>Type <select id="source-cat"></select></label>
+      <label>Owner <select id="source-owner">
+        <option value="all">All sites</option>
+        <option value="brands">Brand websites</option>
+        <option value="competitors">Competitor websites</option>
+        <option value="own">Your websites</option>
+        <option value="third">Third-party sites</option>
+      </select></label>
+      <span class="count" id="source-count"></span>
+    </div>
+    <div class="card flush"><div class="table-wrap"><table class="data" id="source-table"></table></div></div>
+    <div class="pager" id="source-pager"></div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title">
+  <div class="drawer-head">
+    <h2 id="drawer-title"></h2>
+    <button class="icon-btn" id="drawer-close" aria-label="Close">×</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+<div class="scrim" id="scrim" hidden></div>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

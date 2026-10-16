@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -45,11 +46,8 @@ class GeminiScraper(PlatformScraper):
         "button:has(mat-icon:has-text('stop'))",
     ]
 
-    # Appended to every prompt so Gemini includes source URLs inline
-    PROMPT_SUFFIX = (
-        "\n\nImportant: For every fact or recommendation, please include the "
-        "full source URL (e.g. https://example.com/page) so I can verify the information."
-    )
+    # Keep the answer stream (sources included) and nothing else.
+    CAPTURE_URL_RE = re.compile(r"BardFrontendService/StreamGenerate")
 
     # Regex to extract URLs written inline in the response text
     _URL_RE = re.compile(
@@ -68,6 +66,7 @@ class GeminiScraper(PlatformScraper):
         page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         self._dismiss_modal()
         self.handle_rate_limit()
+        self.captured_network_responses.clear()
         box = self._find_prompt_box(timeout=900_000)
         before_text = self._main_text()
 
@@ -77,8 +76,8 @@ class GeminiScraper(PlatformScraper):
         except PlaywrightError:
             pass
 
-        # Append suffix to ask Gemini to include source URLs inline
-        augmented = prompt + self.PROMPT_SUFFIX
+        # Send the prompt exactly as a user would; sources come from the network stream.
+        augmented = prompt
 
         # Try fill first, fall back to keyboard typing
         try:
@@ -141,7 +140,43 @@ class GeminiScraper(PlatformScraper):
         except PlaywrightError:
             pass
 
+        # 3. Links Gemini placed in the answer, from the network stream. Gemini tags
+        # these with utm_source=gemini; the other stream URLs are pages it read.
+        found.extend(u for u in self.payload_urls() if "utm_source=gemini" in u)
+
         return dedupe_preserve_order(found)
+
+    def payload_urls(self, wait_seconds: float = 8.0) -> list[str]:
+        """Every external URL in the captured StreamGenerate response, in order."""
+        deadline = time.monotonic() + wait_seconds
+        while not self.captured_network_responses and time.monotonic() < deadline:
+            time.sleep(0.25)
+        urls: list[str] = []
+
+        def walk(node) -> None:
+            if isinstance(node, str):
+                if node.startswith("http"):
+                    cleaned = self._clean_external_url(node)
+                    if cleaned:
+                        urls.append(cleaned)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+            elif isinstance(node, dict):
+                for value in node.values():
+                    walk(value)
+
+        for captured in self.captured_network_responses:
+            for line in captured.get("body", "").splitlines():
+                if not line.startswith('[["wrb.fr"'):
+                    continue
+                try:
+                    inner = json.loads(line)[0][2]
+                    if inner:
+                        walk(json.loads(inner))
+                except (ValueError, IndexError, TypeError):
+                    continue
+        return dedupe_preserve_order(urls)
 
     def get_response_text(self) -> str:
         """Return the full AI-generated answer text from the last Gemini response."""
@@ -346,7 +381,7 @@ class GeminiScraper(PlatformScraper):
         # Block all Google-owned hosts: *.google.com, *.google.co.in, *.google (TLD), etc.
         if host in self.INTERNAL_HOSTS:
             return ""
-        if host.endswith(".googleusercontent.com"):
+        if host.endswith((".googleusercontent.com", "gstatic.com", "googleapis.com", "ytimg.com", "ggpht.com")):
             return ""
         if host.endswith(".google") or host == "google":
             return ""  # catches gemini.google, business.gemini.google, etc.

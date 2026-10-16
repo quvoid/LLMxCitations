@@ -21,3 +21,6 @@ venv/
 *.png
 output_backup_*.csv
 
+
+# Dashboard cache
+dashboard/cache/

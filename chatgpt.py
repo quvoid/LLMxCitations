@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -10,12 +11,21 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from base import PlatformScraper, dedupe_preserve_order
 
 
+def strip_session_tokens(stream: str) -> str:
+    """Drop SSE events that carry resumable session tokens before the stream is saved."""
+    return "\n".join(line for line in stream.splitlines() if "resume_conversation_token" not in line)
+
+
 class ChatGPTScraper(PlatformScraper):
     platform_name = "chatgpt"
     start_url = "https://chatgpt.com/"
 
     # Minimum seconds between prompts for this platform (overrides --min-delay if higher)
     RATE_LIMIT_DELAY: float = 1.0
+
+    # Only the answer stream: it carries the sources, and skipping /backend-api/me
+    # and friends keeps account details and session tokens out of the output.
+    CAPTURE_URL_RE = re.compile(r"/backend-api/(?:f/)?conversation(?:\?|$)")
 
 
     INTERNAL_HOSTS = {
@@ -122,21 +132,23 @@ class ChatGPTScraper(PlatformScraper):
 
     def submit_prompt(self, prompt: str) -> None:
         page = self.require_page()
-        self._dismiss_modal()
-
-        box = self._find_prompt_box(timeout=30_000)
-        before_text = self._main_text()
-
+        # Start every prompt in a fresh chat; otherwise each prompt is a follow-up
+        # to the previous answers and inherits their context and sources.
+        page.goto(self.start_url, wait_until="domcontentloaded", timeout=60_000)
         try:
-            box.click(timeout=2_000)
-        except Exception:
+            page.wait_for_load_state("networkidle", timeout=10_000)
+        except PlaywrightTimeoutError:
             pass
+        self._dismiss_modal()
+        self.captured_network_responses.clear()
+        self._current_prompt = prompt
 
-        box.fill(prompt)
+        before_text = self._main_text()
+        self._type_prompt(prompt)
         time.sleep(0.2)
 
-        # Press Enter directly on prompt box
-        box.press("Enter")
+        # _type_prompt leaves focus in the prompt box
+        page.keyboard.press("Enter")
         time.sleep(0.4)
 
         # Click send button only if not already sending
@@ -145,7 +157,104 @@ class ChatGPTScraper(PlatformScraper):
         self._wait_for_response_to_start(before_text)
         self._wait_for_generation_to_finish()
 
+    def _type_prompt(self, prompt: str) -> None:
+        """Enter the prompt, re-finding the box if the freshly loaded page re-renders it."""
+        page = self.require_page()
+        last_error: Exception | None = None
+        for _ in range(3):
+            box = self._find_prompt_box(timeout=30_000)
+            try:
+                box.click(timeout=2_000)
+            except Exception:
+                pass
+            try:
+                box.fill(prompt, timeout=8_000)
+                return
+            except PlaywrightError as exc:
+                last_error = exc
+            try:
+                box.evaluate("el => el.focus()")
+                page.keyboard.press("Control+a")
+                page.keyboard.type(prompt, delay=5)
+                return
+            except PlaywrightError as exc:
+                last_error = exc
+            self._dismiss_modal()
+            time.sleep(1.0)
+        raise RuntimeError(f"Could not type into the ChatGPT prompt box: {last_error}")
+
     def get_citation_urls(self) -> list[str]:
+        cited = self._payload_citations()
+        if cited:
+            return cited
+        return self._dom_citation_urls()
+
+    def _payload_citations(self, wait_seconds: float = 8.0) -> list[str]:
+        """Cited URLs from the answer's network stream, in citation order.
+
+        The stream lists every page ChatGPT read (search_result entries) and,
+        separately, the pages it cited (content_references). Only the latter
+        are returned; the dashboard mines the payload for the read-only ones.
+        """
+        # A previous answer's stream can finish after the next prompt is sent, so
+        # keep only the stream that echoes this prompt. Pruning the list also
+        # keeps the saved raw_payload to this answer alone.
+        prompt = getattr(self, "_current_prompt", "")
+        needles = {prompt, json.dumps(prompt)[1:-1], json.dumps(prompt, ensure_ascii=False)[1:-1]}
+        needles |= {n.replace("&", "\\u0026") for n in needles}
+        needles.discard("")
+
+        def own_streams() -> list[dict]:
+            return [c for c in self.captured_network_responses if any(n in c.get("body", "") for n in needles)]
+
+        deadline = time.monotonic() + wait_seconds
+        while not own_streams() and time.monotonic() < deadline:
+            time.sleep(0.25)
+        self.captured_network_responses[:] = [
+            {**c, "body": strip_session_tokens(c.get("body", ""))} for c in own_streams()
+        ]
+
+        cited: list[str] = []
+
+        def collect(node) -> None:
+            if isinstance(node, dict):
+                url = node.get("url")
+                if isinstance(url, str) and url.startswith("http"):
+                    cited.append(url)
+                for value in node.values():
+                    collect(value)
+            elif isinstance(node, list):
+                for value in node:
+                    collect(value)
+
+        def walk(node) -> None:
+            if isinstance(node, dict):
+                path = node.get("p")
+                if isinstance(path, str) and "content_references" in path:
+                    collect(node.get("v"))
+                    return
+                for key, value in node.items():
+                    if key == "content_references":
+                        collect(value)
+                    else:
+                        walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        for captured in self.captured_network_responses:
+            for line in captured.get("body", "").splitlines():
+                if not line.startswith("data: {"):
+                    continue
+                try:
+                    walk(json.loads(line[len("data: "):]))
+                except ValueError:
+                    continue
+
+        urls = [url for raw in cited if (url := self._clean_external_url(raw))]
+        return dedupe_preserve_order(urls)
+
+    def _dom_citation_urls(self) -> list[str]:
         page = self.require_page()
 
         # ChatGPT hides source URLs inside a collapsible 'Sources' / citations panel — expand it first
@@ -575,6 +684,10 @@ class ChatGPTScraper(PlatformScraper):
             return ""
 
         if re.search(r"\.(png|jpe?g|gif|svg|webp|ico|css|js|woff2?)($|\?)", parsed.path, re.I):
+            return ""
+
+        # Map card attribution links, not sources
+        if host.endswith(("mapbox.com", "openstreetmap.org")):
             return ""
 
         return parsed._replace(fragment="").geturl()

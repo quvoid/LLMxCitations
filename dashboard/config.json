@@ -1,0 +1,478 @@
+{
+  "projects": [
+    {
+      "id": "ambani",
+      "name": "Anant Ambani (reputation)",
+      "source": "ambani_output.csv",
+      "own_brand": "Anant Ambani",
+      "brands": {
+        "Anant Ambani": {
+          "match": "anant ambani|\\banant\\b",
+          "domains": []
+        },
+        "Vantara": {
+          "match": "vantara",
+          "domains": [
+            "vantara.in"
+          ]
+        },
+        "Reliance": {
+          "match": "reliance|\\bril\\b|\\bjio\\b",
+          "domains": [
+            "ril.com",
+            "reliancefoundation.org",
+            "jio.com",
+            "reliancenewenergy.com"
+          ]
+        },
+        "Mukesh Ambani": {
+          "match": "mukesh ambani|\\bmukesh\\b",
+          "domains": []
+        },
+        "Nita Ambani": {
+          "match": "nita ambani|\\bnita\\b",
+          "domains": [
+            "nitaambani.com"
+          ]
+        },
+        "Akash Ambani": {
+          "match": "akash ambani|\\bakash\\b",
+          "domains": []
+        },
+        "Isha Ambani": {
+          "match": "isha ambani|isha piramal|\\bisha\\b",
+          "domains": []
+        },
+        "Radhika Merchant": {
+          "match": "radhika merchant|\\bradhika\\b",
+          "domains": []
+        },
+        "PETA": {
+          "match": "\\bpeta\\b",
+          "domains": [
+            "peta.org",
+            "petaindia.com"
+          ]
+        },
+        "Supreme Court / SIT": {
+          "match": "supreme court|\\bsit\\b|special investigation team",
+          "domains": [
+            "sci.gov.in"
+          ]
+        },
+        "Adani": {
+          "match": "adani",
+          "domains": [
+            "adani.com"
+          ]
+        },
+        "Tata": {
+          "match": "\\btata\\b|chandrasekaran",
+          "domains": [
+            "tata.com"
+          ]
+        },
+        "Birla": {
+          "match": "birla",
+          "domains": [
+            "adityabirla.com"
+          ]
+        },
+        "Mahindra": {
+          "match": "mahindra",
+          "domains": [
+            "mahindra.com"
+          ]
+        },
+        "Azim Premji": {
+          "match": "premji|wipro",
+          "domains": [
+            "azimpremjifoundation.org"
+          ]
+        },
+        "Nandan Nilekani": {
+          "match": "nilekani",
+          "domains": []
+        },
+        "Shiv Nadar": {
+          "match": "shiv nadar",
+          "domains": []
+        },
+        "Kamath brothers (Zerodha)": {
+          "match": "kamath|zerodha",
+          "domains": [
+            "zerodha.com"
+          ]
+        },
+        "Elon Musk": {
+          "match": "elon musk|\\bmusk\\b",
+          "domains": []
+        },
+        "Mark Zuckerberg": {
+          "match": "zuckerberg",
+          "domains": []
+        },
+        "Mohammed bin Salman": {
+          "match": "bin salman|\\bmbs\\b",
+          "domains": []
+        },
+        "Newcastle University": {
+          "match": "newcastle",
+          "domains": [
+            "ncl.ac.uk"
+          ]
+        },
+        "Greenpeace / WWF / wildlife bodies": {
+          "match": "greenpeace|\\bwwf\\b|\\biucn\\b|\\bcites\\b|wildlife trust|zoo authority|\\bcza\\b",
+          "domains": [
+            "wwf.org",
+            "wwfindia.org",
+            "iucn.org",
+            "cites.org",
+            "cza.nic.in"
+          ]
+        }
+      }
+    },
+    {
+      "id": "education",
+      "name": "Higher Education (Delhi NCR)",
+      "source": "edu_output.csv",
+      "own_brand": "Manav Rachna",
+      "brands": {
+        "Manav Rachna": {
+          "match": "manav rachna|\\bmriirs\\b|\\bmriu\\b|\\bmru\\b",
+          "domains": [
+            "manavrachna.edu.in",
+            "mru.edu.in",
+            "mriirs.edu.in"
+          ]
+        },
+        "Amity": {
+          "match": "amity",
+          "domains": [
+            "amity.edu"
+          ]
+        },
+        "Sharda": {
+          "match": "sharda",
+          "domains": [
+            "sharda.ac.in"
+          ]
+        },
+        "Bennett": {
+          "match": "bennett",
+          "domains": [
+            "bennett.edu.in"
+          ]
+        },
+        "Galgotias": {
+          "match": "galgotia",
+          "domains": [
+            "galgotiasuniversity.edu.in",
+            "galgotiacollege.edu"
+          ]
+        },
+        "Shiv Nadar": {
+          "match": "shiv nadar|\\bsnioe\\b",
+          "domains": [
+            "snu.edu.in",
+            "snioe.edu.in"
+          ]
+        },
+        "IIIT Delhi": {
+          "match": "iiit[- ]?d(elhi)?\\b|indraprastha institute of information",
+          "domains": [
+            "iiitd.ac.in"
+          ]
+        },
+        "IIT Delhi": {
+          "match": "iit[- ]delhi|\\biitd\\b|indian institute of technology,? delhi",
+          "domains": [
+            "iitd.ac.in"
+          ]
+        },
+        "DTU": {
+          "match": "\\bdtu\\b|delhi technological",
+          "domains": [
+            "dtu.ac.in"
+          ]
+        },
+        "NSUT": {
+          "match": "\\bnsut\\b|netaji subhas",
+          "domains": [
+            "nsut.ac.in"
+          ]
+        },
+        "GGSIPU": {
+          "match": "ggsipu|\\bipu\\b|\\bggsip\\b|guru gobind singh indraprastha|ip university",
+          "domains": [
+            "ipu.ac.in"
+          ]
+        },
+        "JIIT": {
+          "match": "\\bjiit\\b|jaypee",
+          "domains": [
+            "jiit.ac.in"
+          ]
+        },
+        "Jamia Millia Islamia": {
+          "match": "jamia",
+          "domains": [
+            "jmi.ac.in"
+          ]
+        },
+        "Delhi University": {
+          "match": "delhi university|university of delhi",
+          "domains": [
+            "du.ac.in"
+          ]
+        },
+        "GD Goenka": {
+          "match": "g\\.? ?d\\.? goenka",
+          "domains": [
+            "gdgoenkauniversity.com",
+            "gdgu.org"
+          ]
+        },
+        "K.R. Mangalam": {
+          "match": "k\\.? ?r\\.? mangalam",
+          "domains": [
+            "krmangalam.edu.in",
+            "krmu.edu.in"
+          ]
+        },
+        "BML Munjal": {
+          "match": "bml munjal",
+          "domains": [
+            "bmu.edu.in"
+          ]
+        },
+        "NIIT University": {
+          "match": "niit university",
+          "domains": [
+            "niituniversity.in"
+          ]
+        },
+        "Lingaya's": {
+          "match": "lingaya",
+          "domains": [
+            "lingayasvidyapeeth.edu.in"
+          ]
+        },
+        "IILM": {
+          "match": "\\biilm\\b",
+          "domains": [
+            "iilm.edu"
+          ]
+        },
+        "Apeejay": {
+          "match": "apeejay",
+          "domains": [
+            "apeejay.edu"
+          ]
+        },
+        "JIMS": {
+          "match": "\\bjims\\b|jagan institute",
+          "domains": [
+            "jimsindia.org"
+          ]
+        },
+        "NMIMS": {
+          "match": "nmims",
+          "domains": [
+            "nmims.edu"
+          ]
+        },
+        "Christ University": {
+          "match": "christ university|christ \\(deemed",
+          "domains": [
+            "christuniversity.in"
+          ]
+        },
+        "Symbiosis": {
+          "match": "symbiosis",
+          "domains": [
+            "siu.edu.in",
+            "symbiosis.ac.in"
+          ]
+        },
+        "Chandigarh University": {
+          "match": "chandigarh university",
+          "domains": [
+            "cuchd.in"
+          ]
+        },
+        "LPU": {
+          "match": "\\blpu\\b|lovely professional",
+          "domains": [
+            "lpu.in"
+          ]
+        },
+        "VIT": {
+          "match": "\\bvit\\b|vellore institute",
+          "domains": [
+            "vit.ac.in"
+          ]
+        },
+        "SRM": {
+          "match": "\\bsrm\\b",
+          "domains": [
+            "srmist.edu.in",
+            "srmup.in"
+          ]
+        },
+        "Geeta University": {
+          "match": "geeta university",
+          "domains": [
+            "geetauniversity.edu.in"
+          ]
+        },
+        "NorthCap University": {
+          "match": "northcap|\\bncu\\b",
+          "domains": [
+            "ncuindia.edu"
+          ]
+        },
+        "Mangalmay": {
+          "match": "mangalmay",
+          "domains": [
+            "mangalmay.org"
+          ]
+        },
+        "Sushant University": {
+          "match": "sushant university",
+          "domains": [
+            "sushantuniversity.edu.in"
+          ]
+        },
+        "GNIOT": {
+          "match": "\\bgniot\\b|greater noida institute of technology",
+          "domains": [
+            "gniotgroup.edu.in",
+            "gniot.net.in"
+          ]
+        },
+        "Maharaja Surajmal": {
+          "match": "maharaja surajmal|\\bmsit\\b|\\bmsi\\b",
+          "domains": [
+            "msit.in",
+            "msijanakpuri.com"
+          ]
+        },
+        "Amrita": {
+          "match": "amrita",
+          "domains": [
+            "amrita.edu"
+          ]
+        },
+        "Parul University": {
+          "match": "parul university",
+          "domains": [
+            "paruluniversity.ac.in"
+          ]
+        },
+        "Jain University": {
+          "match": "jain university|jain \\(deemed",
+          "domains": [
+            "jainuniversity.ac.in"
+          ]
+        },
+        "IIMT University": {
+          "match": "\\biimt\\b",
+          "domains": [
+            "iimtindia.net",
+            "iimtu.edu.in"
+          ]
+        },
+        "Gurugram University": {
+          "match": "gurugram university",
+          "domains": [
+            "gurugramuniversity.ac.in"
+          ]
+        },
+        "NIT Delhi": {
+          "match": "nit delhi|national institute of technology,? delhi",
+          "domains": [
+            "nitdelhi.ac.in"
+          ]
+        }
+      }
+    },
+    {
+      "id": "glass",
+      "name": "Architectural Glass",
+      "source": "glass_output.csv",
+      "own_brand": null,
+      "brands": {
+        "Saint-Gobain": "saint[- ]?gobain|\\bsgg\\b|cool-lite",
+        "AIS": "\\bais\\b|asahi india|ecosense",
+        "Guardian": "guardian|sunguard|modiguard",
+        "Pilkington / NSG": "pilkington|\\bnsg\\b|suncool",
+        "Gold Plus": "gold ?plus",
+        "FG Glass": "\\bfg glass|\\bfederal glass",
+        "Jindal": "jindal",
+        "Sejal": "sejal",
+        "Sun Ban": "sun ?ban"
+      }
+    },
+    {
+      "id": "credit",
+      "name": "Credit Score",
+      "source": "output_credit.csv",
+      "own_brand": null,
+      "brands": {
+        "CIBIL": "cibil|transunion",
+        "Experian": "experian",
+        "Equifax": "equifax",
+        "CRIF High Mark": "crif",
+        "Paisabazaar": "paisabazaar",
+        "Bajaj Finserv": "bajaj",
+        "Piramal Finance": "piramal",
+        "FREED": "\\bfreed\\b",
+        "Moneyview": "money ?view",
+        "Paytm": "paytm",
+        "CRED": "\\bcred\\b",
+        "BankBazaar": "bankbazaar",
+        "OneScore": "one ?score",
+        "IDFC FIRST": "idfc"
+      }
+    },
+    {
+      "id": "cochlear",
+      "name": "Cochlear Implants",
+      "source": "cochlear_output.csv",
+      "own_brand": null,
+      "brands": {
+        "Cochlear (Nucleus)": "\\bcochlear ltd|\\bnucleus\\b|cochlear limited|cochlear brand|cochlear\\s*\\(|by cochlear",
+        "MED-EL": "med-?el\\b|synchrony|sonnet",
+        "Advanced Bionics": "advanced bionics|\\bab\\b|naida|marvel ci",
+        "Oticon Medical": "oticon",
+        "Nurotron": "nurotron"
+      }
+    },
+    {
+      "id": "phones",
+      "name": "Smartphones",
+      "source": "output.csv",
+      "own_brand": "Motorola",
+      "brands": {
+        "Motorola": "motorola|\\bmoto\\b",
+        "Samsung": "samsung|\\bgalaxy\\b",
+        "Apple": "\\bapple\\b|iphone",
+        "Xiaomi / Redmi": "xiaomi|redmi",
+        "POCO": "\\bpoco\\b",
+        "OnePlus": "oneplus",
+        "Vivo / iQOO": "\\bvivo\\b|iqoo",
+        "OPPO": "\\boppo\\b",
+        "Realme": "realme",
+        "Google Pixel": "\\bpixel\\b",
+        "Nothing / CMF": "nothing phone|\\bcmf\\b",
+        "Nokia": "nokia",
+        "Lava": "\\blava\\b",
+        "Infinix": "infinix",
+        "Tecno": "tecno"
+      }
+    }
+  ]
+}

@@ -75,31 +75,38 @@ class PlatformScraper(ABC):
         self._setup_network_listener()
         return self
 
+    # Network responses worth keeping. Platforms narrow this to the endpoint that
+    # streams the answer, so account/session endpoints never end up in the output.
+    CAPTURE_URL_RE = re.compile(r"/backend-api/|/conversation|/api/")
+    # Answer streams run to several hundred KB and carry the source list at the
+    # end, so only cap pathological sizes.
+    MAX_CAPTURE_CHARS = 5_000_000
+
     def _setup_network_listener(self) -> None:
         if self.page is None:
             return
 
-        def handle_response(response):
+        def handle_request_finished(request):
             try:
-                url = response.url
-                # Capture backend conversation / backend API responses
-                if any(endpoint in url for endpoint in ["/backend-api/", "/conversation", "/api/"]):
-                    content_type = response.headers.get("content-type", "")
-                    if "json" in content_type or "text/event-stream" in content_type or "text/plain" in content_type:
-                        try:
-                            body = response.text()
-                            self.captured_network_responses.append({
-                                "url": url,
-                                "status": response.status,
-                                "headers": response.headers,
-                                "body": body[:50000]  # cap body length for safety
-                            })
-                        except Exception:
-                            pass
+                if not self.CAPTURE_URL_RE.search(request.url):
+                    return
+                response = request.response()
+                if response is None:
+                    return
+                content_type = response.headers.get("content-type", "")
+                if not any(t in content_type for t in ("json", "text/event-stream", "text/plain")):
+                    return
+                self.captured_network_responses.append({
+                    "url": request.url,
+                    "status": response.status,
+                    "body": response.text()[: self.MAX_CAPTURE_CHARS],
+                })
             except Exception:
                 pass
 
-        self.page.on("response", handle_response)
+        # requestfinished fires once a streamed body is complete, unlike
+        # response, which fires on headers and can read a partial stream.
+        self.page.on("requestfinished", handle_request_finished)
 
 
     def __exit__(self, exc_type, exc, tb) -> None:
